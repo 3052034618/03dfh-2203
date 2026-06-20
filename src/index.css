@@ -1,0 +1,210 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: linear-gradient(135deg, #0a1628 0%, #112240 100%);
+  color: #e2e8f0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 42, 74, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.5);
+}
+
+/* 玻璃拟态卡片 */
+.glass-card {
+  background: rgba(17, 34, 64, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 12px;
+}
+
+.glass-card:hover {
+  border-color: rgba(0, 212, 255, 0.3);
+  transition: border-color 0.3s ease;
+}
+
+/* 状态呼吸灯 */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.online {
+  background: #2DD4A0;
+  box-shadow: 0 0 8px #2DD4A0;
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+.status-dot.offline {
+  background: #64748b;
+}
+
+.status-dot.abnormal {
+  background: #FF5757;
+  box-shadow: 0 0 8px #FF5757;
+  animation: pulse-red 1s ease-in-out infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* 渐变文字 */
+.gradient-text {
+  background: linear-gradient(90deg, #00D4FF, #7C3AED);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 发光按钮 */
+.btn-glow {
+  position: relative;
+  background: linear-gradient(135deg, #00D4FF, #0099CC);
+  color: #0a1628;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.btn-glow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 212, 255, 0.4);
+}
+
+.btn-glow:active {
+  transform: translateY(0);
+}
+
+/* 网格背景 */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* 输入框样式 */
+.input-field {
+  background: rgba(15, 42, 74, 0.5);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 8px;
+  color: #e2e8f0;
+  padding: 10px 14px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.input-field:focus {
+  border-color: #00D4FF;
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15);
+}
+
+.input-field::placeholder {
+  color: #64748b;
+}
+
+/* 标签样式 */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tag-trunk {
+  background: rgba(0, 212, 255, 0.15);
+  color: #00D4FF;
+  border: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.tag-city {
+  background: rgba(45, 212, 160, 0.15);
+  color: #2DD4A0;
+  border: 1px solid rgba(45, 212, 160, 0.3);
+}
+
+.tag-pharmacy {
+  background: rgba(255, 138, 61, 0.15);
+  color: #FF8A3D;
+  border: 1px solid rgba(255, 138, 61, 0.3);
+}
+
+.tag-pending {
+  background: rgba(255, 138, 61, 0.15);
+  color: #FF8A3D;
+  border: 1px solid rgba(255, 138, 61, 0.3);
+}
+
+.tag-approved {
+  background: rgba(45, 212, 160, 0.15);
+  color: #2DD4A0;
+  border: 1px solid rgba(45, 212, 160, 0.3);
+}
+
+.tag-rejected {
+  background: rgba(255, 87, 87, 0.15);
+  color: #FF5757;
+  border: 1px solid rgba(255, 87, 87, 0.3);
+}
+
+.tag-resubmitted {
+  background: rgba(124, 58, 237, 0.15);
+  color: #A78BFA;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+/* 数字字体 */
+.font-num {
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* 分隔线 */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.2), transparent);
+}
