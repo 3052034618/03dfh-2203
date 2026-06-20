@@ -1,9 +1,27 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Save, Edit, Eye, Plus, Trash2, Settings, Thermometer, PaintBucket, Ruler } from "lucide-react";
+import {
+  ArrowLeft,
+  Save,
+  Edit,
+  Eye,
+  Plus,
+  Trash2,
+  Settings,
+  Thermometer,
+  PaintBucket,
+  Ruler,
+  History,
+  RotateCcw,
+  GitCompare,
+  X,
+  Clock,
+  User,
+  FileText,
+} from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import CarriageDiagram from "@/components/CarriageDiagram";
-import type { LineTemplate, ProbePoint, TemperatureZone } from "@/types";
+import type { LineTemplate, ProbePoint, TemperatureZone, TemplateVersion } from "@/types";
 import { cn } from "@/lib/utils";
 
 const presetColors = [
@@ -21,7 +39,15 @@ export default function TemplateDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { getTemplateById, updateTemplate, addTemplate } = useAppStore();
+  const {
+    getTemplateById,
+    updateTemplate,
+    addTemplate,
+    getTemplateVersions,
+    createTemplateVersion,
+    restoreTemplateVersion,
+    compareTemplateVersions,
+  } = useAppStore();
   const isNew = id === "new";
   const isEditMode = searchParams.get("edit") === "true" || isNew;
 
@@ -35,11 +61,20 @@ export default function TemplateDetail() {
     zones: [],
     points: [],
     sensitivityLevel: "normal",
+    currentVersion: "v1.0",
+    versions: [],
+    lastChangeNote: "",
   });
 
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"basic" | "zones" | "points">("basic");
+  const [activeTab, setActiveTab] = useState<"basic" | "zones" | "points" | "versions">("basic");
+
+  const [showVersionModal, setShowVersionModal] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<TemplateVersion | null>(null);
+  const [showChangeNoteModal, setShowChangeNoteModal] = useState(false);
+  const [changeNote, setChangeNote] = useState("");
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
 
   useEffect(() => {
     if (!isNew && id) {
@@ -55,6 +90,9 @@ export default function TemplateDetail() {
           zones: template.zones.map((z) => ({ ...z, bounds: { ...z.bounds }, tempRange: { ...z.tempRange } })),
           points: template.points.map((p) => ({ ...p })),
           sensitivityLevel: template.sensitivityLevel,
+          currentVersion: template.currentVersion,
+          versions: template.versions,
+          lastChangeNote: template.lastChangeNote,
         });
         if (template.zones.length > 0) {
           setSelectedZoneId(template.zones[0].id);
@@ -128,12 +166,12 @@ export default function TemplateDetail() {
   };
 
   // ========== 温区操作 ==========
+  const MIN_ZONE_WIDTH = 15;
+  const MIN_LAST_ZONE_WIDTH_TO_ADD = 20;
+
   const addZone = () => {
     const newId = `zone-${Date.now()}`;
-    // 计算新温区位置 - 默认占据右侧一半的一半
     const existingZones = formData.zones;
-    const totalWidth = existingZones.reduce((sum, z) => sum + z.bounds.width, 0);
-    const remainingWidth = 100 - totalWidth;
 
     if (existingZones.length === 0) {
       const newZone: TemperatureZone = {
@@ -149,10 +187,20 @@ export default function TemplateDetail() {
       return;
     }
 
-    // 找到最后一个温区，缩小它，在右边加新的
     const lastZone = existingZones[existingZones.length - 1];
-    const newWidth = Math.max(15, Math.floor(lastZone.bounds.width / 2));
+
+    if (lastZone.bounds.width < MIN_LAST_ZONE_WIDTH_TO_ADD) {
+      alert("最后一个温区宽度不足，无法再添加新温区");
+      return;
+    }
+
+    const newWidth = Math.max(MIN_ZONE_WIDTH, Math.floor(lastZone.bounds.width / 2));
     const oldWidth = lastZone.bounds.width - newWidth;
+
+    if (oldWidth < MIN_ZONE_WIDTH) {
+      alert("切分后原有温区宽度不足，无法添加新温区");
+      return;
+    }
 
     const updatedZones = existingZones.map((z, idx) => {
       if (idx === existingZones.length - 1) {
@@ -293,9 +341,71 @@ export default function TemplateDetail() {
       addTemplate(formData);
       navigate("/templates");
     } else if (id) {
-      updateTemplate(id, formData);
-      navigate(`/templates/${id}`);
+      setChangeNote("");
+      setShowChangeNoteModal(true);
     }
+  };
+
+  const confirmSaveWithVersion = () => {
+    if (!id) return;
+    if (!changeNote.trim()) {
+      alert("请填写版本改动说明");
+      return;
+    }
+    updateTemplate(id, formData);
+    createTemplateVersion(id, changeNote.trim());
+    setShowChangeNoteModal(false);
+    setChangeNote("");
+    navigate(`/templates/${id}`);
+  };
+
+  const handleRestoreVersion = (versionId: string) => {
+    if (!id) return;
+    restoreTemplateVersion(id, versionId);
+    const template = getTemplateById(id);
+    if (template) {
+      setFormData({
+        name: template.name,
+        category: template.category,
+        categoryName: template.categoryName,
+        status: template.status,
+        description: template.description,
+        carriage: { ...template.carriage },
+        zones: template.zones.map((z) => ({ ...z, bounds: { ...z.bounds }, tempRange: { ...z.tempRange } })),
+        points: template.points.map((p) => ({ ...p })),
+        sensitivityLevel: template.sensitivityLevel,
+        currentVersion: template.currentVersion,
+        versions: template.versions,
+        lastChangeNote: template.lastChangeNote,
+      });
+    }
+    setShowRestoreConfirm(false);
+    setSelectedVersion(null);
+    setShowVersionModal(false);
+  };
+
+  const viewVersionDetail = (version: TemplateVersion) => {
+    setSelectedVersion(version);
+    setShowVersionModal(true);
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleString("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const getVersionDiff = (version: TemplateVersion) => {
+    if (!id) return null;
+    const versions = getTemplateVersions(id);
+    const latestVersion = versions[0];
+    if (!latestVersion || latestVersion.id === version.id) return null;
+    return compareTemplateVersions(id, version.id, latestVersion.id);
   };
 
   return (
@@ -637,12 +747,13 @@ export default function TemplateDetail() {
                 { key: "basic", label: "基本信息" },
                 { key: "zones", label: "温区设置" },
                 { key: "points", label: "点位管理" },
+                { key: "versions", label: "版本记录" },
               ].map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key as typeof activeTab)}
                   className={cn(
-                    "flex-1 py-2 text-sm font-medium rounded-md transition-all",
+                    "flex-1 py-2 text-xs font-medium rounded-md transition-all",
                     activeTab === tab.key
                       ? "bg-ice-500/15 text-ice-400"
                       : "text-gray-400 hover:text-white"
@@ -879,6 +990,70 @@ export default function TemplateDetail() {
                 )}
               </div>
             )}
+
+            {activeTab === "versions" && (
+              <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+                {isNew ? (
+                  <p className="text-center text-gray-500 text-sm py-6">新建模板暂无版本记录</p>
+                ) : (
+                  <>
+                    {getTemplateVersions(id!).length === 0 && (
+                      <p className="text-center text-gray-500 text-sm py-6">暂无版本记录</p>
+                    )}
+                    {getTemplateVersions(id!).map((version, idx) => {
+                      const isLatest = idx === 0;
+                      return (
+                        <div
+                          key={version.id}
+                          onClick={() => viewVersionDetail(version)}
+                          className="p-3 rounded-lg cursor-pointer transition-all bg-cold-800/30 border border-transparent hover:border-ice-500/20 hover:bg-cold-800/50"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cn(
+                                  "px-2 py-0.5 text-xs font-bold rounded",
+                                  isLatest
+                                    ? "bg-ice-500/20 text-ice-400"
+                                    : "bg-gray-500/20 text-gray-400"
+                                )}
+                              >
+                                {version.version}
+                              </span>
+                              {isLatest && (
+                                <span className="text-xs text-ice-400">当前版本</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {formatDate(version.createdAt)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <User className="w-3 h-3" />
+                              {version.createdBy}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            <span className="text-gray-500">改动说明：</span>
+                            {version.changeNote}
+                          </div>
+                          <div className="flex items-center gap-3 mt-2 pt-2 border-t border-cold-700/50">
+                            <span className="text-xs text-gray-500">
+                              温区: <span className="text-ice-400">{version.zones.length}</span>
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              点位: <span className="text-warning-400">{version.points.length}</span>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="glass-card p-5">
@@ -908,6 +1083,300 @@ export default function TemplateDetail() {
           </div>
         </div>
       </div>
+
+      {showVersionModal && selectedVersion && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-card w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-ice-500/10">
+              <div className="flex items-center gap-3">
+                <History className="w-5 h-5 text-ice-400" />
+                <div>
+                  <h3 className="text-lg font-semibold text-white">
+                    版本详情 - {selectedVersion.version}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {formatDate(selectedVersion.createdAt)} · {selectedVersion.createdBy}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowVersionModal(false);
+                  setSelectedVersion(null);
+                }}
+                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              <div className="bg-cold-800/30 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-white mb-2 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-ice-400" />
+                  改动说明
+                </h4>
+                <p className="text-sm text-gray-300">{selectedVersion.changeNote}</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-3 bg-cold-800/30 rounded-lg">
+                  <p className="text-xl font-bold font-num text-ice-400">
+                    {selectedVersion.zones.length}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">温区数量</p>
+                </div>
+                <div className="text-center p-3 bg-cold-800/30 rounded-lg">
+                  <p className="text-xl font-bold font-num text-warning-400">
+                    {selectedVersion.points.filter((p) => p.type === "mandatory").length}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">必放点位</p>
+                </div>
+                <div className="text-center p-3 bg-cold-800/30 rounded-lg">
+                  <p className="text-xl font-bold font-num text-purple-400">
+                    {selectedVersion.points.length}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">总点位</p>
+                </div>
+              </div>
+
+              {!isNew &&
+                (() => {
+                  const diff = getVersionDiff(selectedVersion);
+                  if (!diff) return null;
+                  const hasChanges =
+                    diff.addedZones.length > 0 ||
+                    diff.removedZones.length > 0 ||
+                    diff.modifiedZones.length > 0 ||
+                    diff.addedPoints.length > 0 ||
+                    diff.removedPoints.length > 0;
+                  if (!hasChanges) return null;
+                  return (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-white flex items-center gap-2">
+                        <GitCompare className="w-4 h-4 text-ice-400" />
+                        与当前版本差异
+                      </h4>
+                      <div className="space-y-2">
+                        {diff.addedZones.length > 0 && (
+                          <div className="flex items-start gap-2 text-sm">
+                            <span className="text-success-400 font-bold">+</span>
+                            <span className="text-gray-400">
+                              新增温区 {diff.addedZones.map((z) => z.name).join("、")}
+                            </span>
+                          </div>
+                        )}
+                        {diff.removedZones.length > 0 && (
+                          <div className="flex items-start gap-2 text-sm">
+                            <span className="text-danger-400 font-bold">-</span>
+                            <span className="text-gray-400">
+                              删除温区 {diff.removedZones.map((z) => z.name).join("、")}
+                            </span>
+                          </div>
+                        )}
+                        {diff.modifiedZones.length > 0 && (
+                          <div className="flex items-start gap-2 text-sm">
+                            <span className="text-warning-400 font-bold">~</span>
+                            <span className="text-gray-400">
+                              修改温区 {diff.modifiedZones.map((z) => z.name).join("、")}
+                            </span>
+                          </div>
+                        )}
+                        {diff.addedPoints.length > 0 && (
+                          <div className="flex items-start gap-2 text-sm">
+                            <span className="text-success-400 font-bold">+</span>
+                            <span className="text-gray-400">
+                              新增点位 {diff.addedPoints.map((p) => p.name).join("、")}
+                            </span>
+                          </div>
+                        )}
+                        {diff.removedPoints.length > 0 && (
+                          <div className="flex items-start gap-2 text-sm">
+                            <span className="text-danger-400 font-bold">-</span>
+                            <span className="text-gray-400">
+                              删除点位 {diff.removedPoints.map((p) => p.name).join("、")}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              <div>
+                <h4 className="text-sm font-medium text-white mb-3">温区列表</h4>
+                <div className="space-y-2">
+                  {selectedVersion.zones.map((zone) => (
+                    <div
+                      key={zone.id}
+                      className="p-3 rounded-lg bg-cold-800/30 border border-cold-700/50"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div
+                          className="w-3 h-3 rounded flex-shrink-0"
+                          style={{ backgroundColor: zone.color }}
+                        ></div>
+                        <span className="text-sm text-white font-medium">{zone.name}</span>
+                        <span className="text-xs text-gray-400 ml-auto font-num">
+                          {zone.targetTemp}°C
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                        <span>
+                          温度范围: {zone.tempRange.min}~{zone.tempRange.max}°C
+                        </span>
+                        <span>
+                          占比: {zone.bounds.width}×{zone.bounds.height}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium text-white mb-3">点位列表</h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {selectedVersion.points.map((point, idx) => {
+                    const zone = selectedVersion.zones.find((z) => z.id === point.zoneId);
+                    return (
+                      <div
+                        key={point.id}
+                        className="p-3 rounded-lg bg-cold-800/30 border border-cold-700/50"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "w-2 h-2 rounded-full",
+                                point.type === "mandatory" ? "bg-ice-400" : "bg-gray-500"
+                              )}
+                            ></span>
+                            <span className="text-sm text-white">
+                              {idx + 1}. {point.name}
+                            </span>
+                          </div>
+                          {zone && (
+                            <span
+                              className="text-xs px-1.5 py-0.5 rounded"
+                              style={{
+                                backgroundColor: `${zone.color}20`,
+                                color: zone.color,
+                              }}
+                            >
+                              {zone.name}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 flex items-center gap-3">
+                          <span>
+                            {point.type === "mandatory" ? "必放" : "可选"}
+                          </span>
+                          <span className="font-num">
+                            ({point.x.toFixed(0)}, {point.y.toFixed(0)})
+                          </span>
+                        </div>
+                        {point.description && (
+                          <p className="text-xs text-gray-500 mt-1.5">{point.description}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-ice-500/10 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowVersionModal(false);
+                  setSelectedVersion(null);
+                }}
+                className="px-4 py-2 rounded-lg border border-gray-500/30 text-gray-400 hover:bg-gray-500/10 transition-colors"
+              >
+                关闭
+              </button>
+              {!isNew && (
+                <button
+                  onClick={() => setShowRestoreConfirm(true)}
+                  className="px-4 py-2 rounded-lg bg-ice-500/10 text-ice-400 hover:bg-ice-500/20 transition-colors flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  恢复此版本
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRestoreConfirm && selectedVersion && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-card w-full max-w-md">
+            <div className="p-5">
+              <h3 className="text-lg font-semibold text-white mb-2">确认恢复版本</h3>
+              <p className="text-sm text-gray-400">
+                确定要将模板恢复到 <span className="text-ice-400 font-medium">{selectedVersion.version}</span> 版本吗？
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                恢复后当前模板的温区、点位等配置将被该版本覆盖，此操作不可撤销。
+              </p>
+            </div>
+            <div className="p-5 border-t border-ice-500/10 flex justify-end gap-3">
+              <button
+                onClick={() => setShowRestoreConfirm(false)}
+                className="px-4 py-2 rounded-lg border border-gray-500/30 text-gray-400 hover:bg-gray-500/10 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleRestoreVersion(selectedVersion.id)}
+                className="px-4 py-2 rounded-lg bg-ice-500/20 text-ice-400 hover:bg-ice-500/30 transition-colors"
+              >
+                确认恢复
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showChangeNoteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-card w-full max-w-md">
+            <div className="p-5">
+              <h3 className="text-lg font-semibold text-white mb-2">版本改动说明</h3>
+              <p className="text-sm text-gray-400 mb-4">
+                请简要描述本次修改的内容，以便后续追溯版本历史。
+              </p>
+              <textarea
+                value={changeNote}
+                onChange={(e) => setChangeNote(e.target.value)}
+                className="input-field w-full h-28 resize-none"
+                placeholder="例如：调整冷冻区温度范围，新增2个监测点位..."
+                autoFocus
+              />
+            </div>
+            <div className="p-5 border-t border-ice-500/10 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowChangeNoteModal(false);
+                  setChangeNote("");
+                }}
+                className="px-4 py-2 rounded-lg border border-gray-500/30 text-gray-400 hover:bg-gray-500/10 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmSaveWithVersion}
+                className="btn-glow px-5 py-2 flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                保存并创建版本
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

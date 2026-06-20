@@ -36,7 +36,7 @@ interface AdjustmentMarkDraft {
 export default function AuditDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getAuditById, getTemplateById, approveAudit, rejectAudit } = useAppStore();
+  const { getAuditById, getTemplateById, approveAudit, rejectAudit, approveResubmit } = useAppStore();
 
   const auditTask = getAuditById(id || "");
   const template = auditTask ? getTemplateById(auditTask.templateId) : undefined;
@@ -49,6 +49,7 @@ export default function AuditDetail() {
   const [rejectMarkMode, setRejectMarkMode] = useState(false);
   const [adjustmentMarksDraft, setAdjustmentMarksDraft] = useState<AdjustmentMarkDraft[]>([]);
   const [markPointInput, setMarkPointInput] = useState<{ pointId: string; description: string } | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
 
   if (!auditTask || !template) {
     return (
@@ -61,19 +62,54 @@ export default function AuditDetail() {
   const selectedProbe = auditTask.deployedProbes.find((p) => p.id === selectedProbeId);
   const selectedPoint = template.points.find((p) => p.id === selectedProbe?.pointId);
 
-  const effectiveAdjustmentMarks =
+  const previousSubmission = auditTask.previousSubmission;
+  const isResubmitted = auditTask.status === "resubmitted" && previousSubmission;
+  const resubmissionNumber = auditTask.resubmitCount + 1;
+
+  const getPreviousProbeByPointId = (pointId: string) => {
+    return previousSubmission?.deployedProbes.find((p) => p.pointId === pointId);
+  };
+
+  const getProbeChangeType = (pointId: string): "added" | "removed" | "status-changed" | "probe-changed" | "none" => {
+    if (!previousSubmission) return "none";
+    const currentProbe = auditTask.deployedProbes.find((p) => p.pointId === pointId);
+    const previousProbe = previousSubmission.deployedProbes.find((p) => p.pointId === pointId);
+
+    if (currentProbe && !previousProbe) return "added";
+    if (!currentProbe && previousProbe) return "removed";
+    if (currentProbe && previousProbe) {
+      if (currentProbe.probeNo !== previousProbe.probeNo) return "probe-changed";
+      if (currentProbe.deviceStatus !== previousProbe.deviceStatus) return "status-changed";
+    }
+    return "none";
+  };
+
+  const hasAnyChange = (pointId: string) => {
+    return getProbeChangeType(pointId) !== "none";
+  };
+
+  const displayAdjustmentMarks =
     auditTask.status === "rejected" && auditTask.auditRecord?.adjustmentMarks
-      ? auditTask.auditRecord.adjustmentMarks.map((m) => ({
+      ? auditTask.auditRecord.adjustmentMarks
+      : isResubmitted && previousSubmission?.auditRecord?.adjustmentMarks
+      ? previousSubmission.auditRecord.adjustmentMarks
+      : [];
+
+  const effectiveAdjustmentMarks =
+    rejectMarkMode
+      ? adjustmentMarksDraft.map((m, idx) => ({
+          ...m,
+          id: `draft-${idx}`,
+        }))
+      : displayAdjustmentMarks.length > 0
+      ? displayAdjustmentMarks.map((m) => ({
           pointId: m.pointId,
           x: m.x,
           y: m.y,
           description: m.description,
           id: m.id,
         }))
-      : adjustmentMarksDraft.map((m, idx) => ({
-          ...m,
-          id: `draft-${idx}`,
-        }));
+      : [];
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
@@ -92,7 +128,11 @@ export default function AuditDetail() {
 
   const handleApprove = () => {
     if (confirm("确认审核通过？")) {
-      approveAudit(auditTask.id, "布控规范，设备状态良好，准予放行");
+      if (auditTask.status === "resubmitted") {
+        approveResubmit(auditTask.id, "整改到位，布控规范，准予放行");
+      } else {
+        approveAudit(auditTask.id, "布控规范，设备状态良好，准予放行");
+      }
       navigate("/audits");
     }
   };
@@ -230,6 +270,36 @@ export default function AuditDetail() {
         )}
       </div>
 
+      {isResubmitted && (
+        <div className="glass-card p-4 border-warning-500/30 bg-warning-500/5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-warning-400" />
+              <div>
+                <p className="text-sm font-medium text-warning-300">
+                  该任务为第 {resubmissionNumber} 次重新提交，点击查看整改前后对比
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  上次提交时间：{new Date(previousSubmission!.submittedAt).toLocaleString("zh-CN")} · 上次审核人：{previousSubmission!.auditRecord.auditor}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setCompareMode(!compareMode)}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2",
+                compareMode
+                  ? "bg-ice-500 text-white"
+                  : "border border-ice-500/30 text-ice-400 hover:bg-ice-500/10"
+              )}
+            >
+              <Camera className="w-4 h-4" />
+              {compareMode ? "退出对比视图" : "切换对比视图"}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-3 space-y-6">
           <div className="glass-card p-5">
@@ -278,37 +348,43 @@ export default function AuditDetail() {
             </div>
           </div>
 
-          {auditTask.auditRecord && (
+          {(auditTask.auditRecord || (isResubmitted && previousSubmission?.auditRecord)) && (
             <div className="glass-card p-5">
               <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-purple-400" />
-                审核记录
+                {isResubmitted && !auditTask.auditRecord ? "上次审核记录" : "审核记录"}
               </h3>
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">审核人</span>
-                  <span className="text-white">{auditTask.auditRecord.auditor}</span>
+                  <span className="text-white">
+                    {auditTask.auditRecord?.auditor || previousSubmission?.auditRecord?.auditor}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">审核结果</span>
-                  <span className={auditTask.auditRecord.result === "approved" ? "text-success-400" : "text-danger-400"}>
-                    {auditTask.auditRecord.result === "approved" ? "通过" : "退回"}
+                  <span className={
+                    (auditTask.auditRecord?.result || previousSubmission?.auditRecord?.result) === "approved"
+                      ? "text-success-400"
+                      : "text-danger-400"
+                  }>
+                    {(auditTask.auditRecord?.result || previousSubmission?.auditRecord?.result) === "approved" ? "通过" : "退回"}
                   </span>
                 </div>
                 <div className="pt-2">
                   <p className="text-xs text-gray-500 mb-1.5">审核备注</p>
                   <p className="text-sm text-gray-300 bg-cold-800/50 rounded-lg p-3">
-                    {auditTask.auditRecord.remarks}
+                    {auditTask.auditRecord?.remarks || previousSubmission?.auditRecord?.remarks}
                   </p>
                 </div>
-                {auditTask.auditRecord.adjustmentMarks && auditTask.auditRecord.adjustmentMarks.length > 0 && (
+                {displayAdjustmentMarks && displayAdjustmentMarks.length > 0 && (
                   <div className="pt-3">
                     <p className="text-xs text-gray-500 mb-2 flex items-center gap-1.5">
                       <AlertOctagon className="w-3 h-3 text-danger-400" />
                       调整要求列表
                     </p>
                     <div className="space-y-2">
-                      {auditTask.auditRecord.adjustmentMarks.map((mark) => (
+                      {displayAdjustmentMarks.map((mark) => (
                         <div
                           key={mark.id}
                           className="p-2.5 rounded-lg bg-danger-500/10 border border-danger-500/20"
@@ -352,202 +428,451 @@ export default function AuditDetail() {
           )}
         </div>
 
-        <div className="col-span-5 space-y-6">
-          <div className="glass-card p-5">
-            <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-ice-400" />
-              车厢布控平面图
-            </h3>
-            {rejectMarkMode && (
-              <div className="mb-4 p-3 rounded-lg bg-danger-500/10 border border-danger-500/30 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-danger-300">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                  <span>退回标记模式：点击问题点位并填写调整要求，完成后确认退回</span>
-                </div>
-                <button
-                  onClick={handleExitRejectMarkMode}
-                  className="p-1.5 rounded-lg text-danger-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="退出标记模式"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-            <div className="bg-cold-900/50 rounded-xl p-6">
-              <CarriageDiagram
-                zones={template.zones}
-                points={template.points}
-                deployedProbes={auditTask.deployedProbes}
-                missingPoints={auditTask.missingPoints}
-                showLabels={true}
-                interactive={true}
-                onPointClick={(point: ProbePoint) => {
-                  const probe = auditTask.deployedProbes.find((p) => p.pointId === point.id);
-                  if (probe) setSelectedProbeId(probe.id);
-                }}
-                selectedPointId={selectedProbe?.pointId}
-                width={500}
-                height={240}
-                markMode={rejectMarkMode}
-                markedPointIds={adjustmentMarksDraft.map((m) => m.pointId)}
-                adjustmentMarks={auditTask.auditRecord?.adjustmentMarks || effectiveAdjustmentMarks}
-                onMarkPoint={handleMarkPoint}
-              />
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-              <div className="p-2 rounded-lg bg-cold-800/30">
-                <p className="text-lg font-bold font-num text-success-400">
-                  {auditTask.deployedProbes.filter((p) => p.deviceStatus === "online").length}
-                </p>
-                <p className="text-xs text-gray-500">在线</p>
-              </div>
-              <div className="p-2 rounded-lg bg-cold-800/30">
-                <p className="text-lg font-bold font-num text-gray-400">
-                  {auditTask.deployedProbes.filter((p) => p.deviceStatus === "offline").length}
-                </p>
-                <p className="text-xs text-gray-500">离线</p>
-              </div>
-              <div className="p-2 rounded-lg bg-cold-800/30">
-                <p className="text-lg font-bold font-num text-danger-400">
-                  {auditTask.deployedProbes.filter((p) => p.deviceStatus === "abnormal").length}
-                </p>
-                <p className="text-xs text-gray-500">异常</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="glass-card p-5">
-            <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-              <Camera className="w-5 h-5 text-purple-400" />
-              点位照片
-            </h3>
-            {selectedProbe ? (
-              <div className="space-y-4">
-                <ProbePhoto
-                  probeNo={selectedProbe.probeNo}
-                  pointName={selectedPoint?.name || ""}
-                />
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">{selectedPoint?.name}</span>
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => {
-                        const idx = auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId);
-                        if (idx > 0) setSelectedProbeId(auditTask.deployedProbes[idx - 1].id);
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white disabled:opacity-30"
-                      disabled={auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId) === 0}
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <span className="text-xs text-gray-500 font-num">
-                      {auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId) + 1} / {auditTask.deployedProbes.length}
+        {compareMode && previousSubmission ? (
+          <div className="col-span-9 space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-6">
+                <div className="glass-card p-5 border-gray-500/30">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-gray-400 flex items-center gap-2">
+                      <Clock className="w-5 h-5" />
+                      上次提交
+                    </h3>
+                    <span className="text-xs text-gray-500 bg-gray-500/10 px-2 py-1 rounded font-num">
+                      {new Date(previousSubmission.submittedAt).toLocaleString("zh-CN")}
                     </span>
+                  </div>
+                  <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                    {template.points.map((point) => {
+                      const prevProbe = previousSubmission.deployedProbes.find(
+                        (p) => p.pointId === point.id
+                      );
+                      const changeType = getProbeChangeType(point.id);
+                      const isSelected = selectedProbe?.pointId === point.id;
+                      const isMissing = !prevProbe;
+
+                      return (
+                        <div
+                          key={point.id}
+                          onClick={() => {
+                            const currentProbe = auditTask.deployedProbes.find(
+                              (p) => p.pointId === point.id
+                            );
+                            if (currentProbe) {
+                              setSelectedProbeId(currentProbe.id);
+                            } else if (prevProbe) {
+                              const firstProbe = auditTask.deployedProbes[0];
+                              if (firstProbe) setSelectedProbeId(firstProbe.id);
+                            }
+                          }}
+                          className={cn(
+                            "p-3 rounded-lg cursor-pointer transition-all border",
+                            isSelected
+                              ? "bg-gray-500/10 border-gray-500/30"
+                              : "bg-cold-800/20 border-transparent hover:border-gray-500/20",
+                            changeType !== "none" && "ring-1 ring-warning-500/30"
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              {isMissing ? (
+                                <span className="w-2 h-2 rounded-full bg-gray-600"></span>
+                              ) : (
+                                <span className={cn("status-dot", prevProbe.deviceStatus, "opacity-60")}></span>
+                              )}
+                              <span className="text-sm font-medium text-gray-400">{point.name}</span>
+                            </div>
+                            <span className="text-xs text-gray-500 font-num">
+                              {isMissing ? "未布放" : prevProbe.probeNo}
+                            </span>
+                          </div>
+                          {!isMissing && (
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="flex items-center gap-1.5 text-gray-500">
+                                <Thermometer className="w-3.5 h-3.5" />
+                                <span className="font-num text-gray-400">
+                                  {prevProbe.currentTemp}°C
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-gray-500">
+                                <Battery className="w-3.5 h-3.5 text-gray-400" />
+                                <span className="font-num text-gray-400">
+                                  {prevProbe.batteryLevel}%
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          {changeType !== "none" && (
+                            <div className="mt-2 text-xs">
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded text-xs",
+                                changeType === "added" && "bg-success-500/20 text-success-400",
+                                changeType === "removed" && "bg-danger-500/20 text-danger-400",
+                                changeType === "status-changed" && "bg-warning-500/20 text-warning-400",
+                                changeType === "probe-changed" && "bg-purple-500/20 text-purple-400"
+                              )}>
+                                {changeType === "added" && "新增"}
+                                {changeType === "removed" && "已移除"}
+                                {changeType === "status-changed" && "状态变化"}
+                                {changeType === "probe-changed" && "探头更换"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="glass-card p-5 border-gray-500/30">
+                  <h3 className="text-base font-semibold text-gray-400 mb-4 flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    点位照片
+                  </h3>
+                  {selectedProbe ? (() => {
+                    const prevProbe = getPreviousProbeByPointId(selectedProbe.pointId);
+                    const point = template.points.find((p) => p.id === selectedProbe.pointId);
+                    return prevProbe ? (
+                      <div className="relative">
+                        <div className="absolute top-3 left-3 z-10">
+                          <span className="text-xs bg-gray-700/80 text-gray-300 px-2 py-1 rounded backdrop-blur-sm">
+                            上次提交
+                          </span>
+                        </div>
+                        <ProbePhoto
+                          probeNo={prevProbe.probeNo}
+                          pointName={point?.name || ""}
+                          photoUrl={prevProbe.photoUrl}
+                          className="opacity-70 grayscale"
+                        />
+                      </div>
+                    ) : (
+                      <div className="aspect-video rounded-xl bg-cold-800/30 flex items-center justify-center">
+                        <p className="text-gray-500 text-sm">上次未布放此点位</p>
+                      </div>
+                    );
+                  })() : (
+                    <p className="text-center text-gray-500 py-8">选择点位查看照片</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="glass-card p-5 border-ice-500/30">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                      <Check className="w-5 h-5 text-success-400" />
+                      本次提交
+                    </h3>
+                    <span className="text-xs text-ice-400 bg-ice-500/10 px-2 py-1 rounded font-num">
+                      {new Date(auditTask.submittedAt).toLocaleString("zh-CN")}
+                    </span>
+                  </div>
+                  <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                    {template.points.map((point) => {
+                      const currProbe = auditTask.deployedProbes.find(
+                        (p) => p.pointId === point.id
+                      );
+                      const changeType = getProbeChangeType(point.id);
+                      const isSelected = selectedProbe?.pointId === point.id;
+                      const isMissing = !currProbe;
+
+                      return (
+                        <div
+                          key={point.id}
+                          onClick={() => {
+                            if (currProbe) {
+                              setSelectedProbeId(currProbe.id);
+                            }
+                          }}
+                          className={cn(
+                            "p-3 rounded-lg cursor-pointer transition-all border",
+                            isSelected
+                              ? "bg-ice-500/10 border-ice-500/30"
+                              : "bg-cold-800/30 border-transparent hover:border-ice-500/20",
+                            changeType !== "none" && "ring-2 ring-warning-500/50"
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              {isMissing ? (
+                                <span className="w-2 h-2 rounded-full bg-gray-600"></span>
+                              ) : (
+                                <span className={`status-dot ${currProbe.deviceStatus}`}></span>
+                              )}
+                              <span className="text-sm font-medium text-white">{point.name}</span>
+                            </div>
+                            <span className="text-xs text-gray-500 font-num">
+                              {isMissing ? "未布放" : currProbe.probeNo}
+                            </span>
+                          </div>
+                          {!isMissing && (
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="flex items-center gap-1.5 text-gray-400">
+                                <Thermometer className="w-3.5 h-3.5" />
+                                <span className={cn(
+                                  "font-num",
+                                  currProbe.deviceStatus === "abnormal" ? "text-danger-400" : "text-ice-300"
+                                )}>
+                                  {currProbe.currentTemp}°C
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-gray-400">
+                                <Battery className={cn("w-3.5 h-3.5", getBatteryColor(currProbe.batteryLevel))} />
+                                <span className={`font-num ${getBatteryColor(currProbe.batteryLevel)}`}>
+                                  {currProbe.batteryLevel}%
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          {changeType !== "none" && (
+                            <div className="mt-2 text-xs">
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded text-xs",
+                                changeType === "added" && "bg-success-500/20 text-success-400",
+                                changeType === "removed" && "bg-danger-500/20 text-danger-400",
+                                changeType === "status-changed" && "bg-warning-500/20 text-warning-400",
+                                changeType === "probe-changed" && "bg-purple-500/20 text-purple-400"
+                              )}>
+                                {changeType === "added" && "新增"}
+                                {changeType === "removed" && "已移除"}
+                                {changeType === "status-changed" && "状态变化"}
+                                {changeType === "probe-changed" && "探头更换"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="glass-card p-5">
+                  <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                    <Camera className="w-5 h-5 text-purple-400" />
+                    点位照片
+                  </h3>
+                  {selectedProbe ? (
+                    <div className="relative">
+                      <div className="absolute top-3 left-3 z-10">
+                        <span className="text-xs bg-success-500/80 text-white px-2 py-1 rounded backdrop-blur-sm">
+                          本次提交
+                        </span>
+                      </div>
+                      <ProbePhoto
+                        probeNo={selectedProbe.probeNo}
+                        pointName={selectedPoint?.name || ""}
+                        photoUrl={selectedProbe.photoUrl}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-center text-gray-500 py-8">选择点位查看照片</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="col-span-5 space-y-6">
+              <div className="glass-card p-5">
+                <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-ice-400" />
+                  车厢布控平面图
+                </h3>
+                {rejectMarkMode && (
+                  <div className="mb-4 p-3 rounded-lg bg-danger-500/10 border border-danger-500/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-danger-300">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      <span>退回标记模式：点击问题点位并填写调整要求，完成后确认退回</span>
+                    </div>
                     <button
-                      onClick={() => {
-                        const idx = auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId);
-                        if (idx < auditTask.deployedProbes.length - 1) {
-                          setSelectedProbeId(auditTask.deployedProbes[idx + 1].id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white disabled:opacity-30"
-                      disabled={auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId) === auditTask.deployedProbes.length - 1}
+                      onClick={handleExitRejectMarkMode}
+                      className="p-1.5 rounded-lg text-danger-400 hover:text-white hover:bg-white/10 transition-colors"
+                      title="退出标记模式"
                     >
-                      <ChevronRight className="w-5 h-5" />
+                      <LogOut className="w-4 h-4" />
                     </button>
                   </div>
+                )}
+                <div className="bg-cold-900/50 rounded-xl p-6">
+                  <CarriageDiagram
+                    zones={template.zones}
+                    points={template.points}
+                    deployedProbes={auditTask.deployedProbes}
+                    missingPoints={auditTask.missingPoints}
+                    showLabels={true}
+                    interactive={true}
+                    onPointClick={(point: ProbePoint) => {
+                      const probe = auditTask.deployedProbes.find((p) => p.pointId === point.id);
+                      if (probe) setSelectedProbeId(probe.id);
+                    }}
+                    selectedPointId={selectedProbe?.pointId}
+                    width={500}
+                    height={240}
+                    markMode={rejectMarkMode}
+                    markedPointIds={adjustmentMarksDraft.map((m) => m.pointId)}
+                    adjustmentMarks={effectiveAdjustmentMarks}
+                    onMarkPoint={handleMarkPoint}
+                  />
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                  <div className="p-2 rounded-lg bg-cold-800/30">
+                    <p className="text-lg font-bold font-num text-success-400">
+                      {auditTask.deployedProbes.filter((p) => p.deviceStatus === "online").length}
+                    </p>
+                    <p className="text-xs text-gray-500">在线</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-cold-800/30">
+                    <p className="text-lg font-bold font-num text-gray-400">
+                      {auditTask.deployedProbes.filter((p) => p.deviceStatus === "offline").length}
+                    </p>
+                    <p className="text-xs text-gray-500">离线</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-cold-800/30">
+                    <p className="text-lg font-bold font-num text-danger-400">
+                      {auditTask.deployedProbes.filter((p) => p.deviceStatus === "abnormal").length}
+                    </p>
+                    <p className="text-xs text-gray-500">异常</p>
+                  </div>
                 </div>
               </div>
-            ) : (
-              <p className="text-center text-gray-500 py-8">选择点位查看照片</p>
-            )}
-          </div>
-        </div>
 
-        <div className="col-span-4 space-y-6">
-          <div className="glass-card p-5">
-            <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-              <Thermometer className="w-4 h-4 text-warning-400" />
-              设备状态列表
-            </h3>
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {auditTask.deployedProbes.map((probe: DeployedProbe) => {
-                const point = template.points.find((p) => p.id === probe.pointId);
-                return (
-                  <div
-                    key={probe.id}
-                    onClick={() => setSelectedProbeId(probe.id)}
-                    className={cn(
-                      "p-3 rounded-lg cursor-pointer transition-all",
-                      selectedProbeId === probe.id
-                        ? "bg-ice-500/10 border border-ice-500/30"
-                        : "bg-cold-800/30 border border-transparent hover:border-ice-500/20"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className={`status-dot ${probe.deviceStatus}`}></span>
-                        <span className="text-sm font-medium text-white">{point?.name}</span>
-                      </div>
-                      <span className="text-xs text-gray-500 font-num">{probe.probeNo}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center gap-1.5 text-gray-400">
-                        <Thermometer className="w-3.5 h-3.5" />
-                        <span className={cn(
-                          "font-num",
-                          probe.deviceStatus === "abnormal" ? "text-danger-400" : "text-ice-300"
-                        )}>
-                          {probe.currentTemp}°C
+              <div className="glass-card p-5">
+                <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-purple-400" />
+                  点位照片
+                </h3>
+                {selectedProbe ? (
+                  <div className="space-y-4">
+                    <ProbePhoto
+                      probeNo={selectedProbe.probeNo}
+                      pointName={selectedPoint?.name || ""}
+                      photoUrl={selectedProbe.photoUrl}
+                    />
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">{selectedPoint?.name}</span>
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => {
+                            const idx = auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId);
+                            if (idx > 0) setSelectedProbeId(auditTask.deployedProbes[idx - 1].id);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white disabled:opacity-30"
+                          disabled={auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId) === 0}
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <span className="text-xs text-gray-500 font-num">
+                          {auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId) + 1} / {auditTask.deployedProbes.length}
                         </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-gray-400">
-                        <Battery className={cn("w-3.5 h-3.5", getBatteryColor(probe.batteryLevel))} />
-                        <span className={`font-num ${getBatteryColor(probe.batteryLevel)}`}>
-                          {probe.batteryLevel}%
-                        </span>
+                        <button
+                          onClick={() => {
+                            const idx = auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId);
+                            if (idx < auditTask.deployedProbes.length - 1) {
+                              setSelectedProbeId(auditTask.deployedProbes[idx + 1].id);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white disabled:opacity-30"
+                          disabled={auditTask.deployedProbes.findIndex((p) => p.id === selectedProbeId) === auditTask.deployedProbes.length - 1}
+                        >
+                          <ChevronRight className="w-5 h-5" />
+ </button>
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {selectedProbe && selectedPoint && (
-            <div className="glass-card p-5">
-              <h3 className="text-sm font-semibold text-white mb-3">点位详情</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">点位名称</span>
-                  <span className="text-white">{selectedPoint.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">类型</span>
-                  <span className={selectedPoint.type === "mandatory" ? "text-ice-400" : "text-gray-400"}>
-                    {selectedPoint.type === "mandatory" ? "必放点位" : "可选点位"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">设备状态</span>
-                  <span className={cn(
-                    selectedProbe.deviceStatus === "online" && "text-success-400",
-                    selectedProbe.deviceStatus === "offline" && "text-gray-400",
-                    selectedProbe.deviceStatus === "abnormal" && "text-danger-400"
-                  )}>
-                    {getStatusLabel(selectedProbe.deviceStatus)}
-                  </span>
-                </div>
-                <div className="pt-2">
-                  <p className="text-gray-500 text-xs mb-1.5">点位说明</p>
-                  <p className="text-gray-300 text-sm bg-cold-800/50 rounded-lg p-2.5">
-                    {selectedPoint.description}
-                  </p>
-                </div>
+                ) : (
+                  <p className="text-center text-gray-500 py-8">选择点位查看照片</p>
+                )}
               </div>
             </div>
-          )}
-        </div>
+
+            <div className="col-span-4 space-y-6">
+              <div className="glass-card p-5">
+                <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                  <Thermometer className="w-4 h-4 text-warning-400" />
+                  设备状态列表
+                </h3>
+                <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                  {auditTask.deployedProbes.map((probe: DeployedProbe) => {
+                    const point = template.points.find((p) => p.id === probe.pointId);
+                    return (
+                      <div
+                        key={probe.id}
+                        onClick={() => setSelectedProbeId(probe.id)}
+                        className={cn(
+                          "p-3 rounded-lg cursor-pointer transition-all",
+                          selectedProbeId === probe.id
+                            ? "bg-ice-500/10 border border-ice-500/30"
+                            : "bg-cold-800/30 border border-transparent hover:border-ice-500/20"
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`status-dot ${probe.deviceStatus}`}></span>
+                            <span className="text-sm font-medium text-white">{point?.name}</span>
+                          </div>
+                          <span className="text-xs text-gray-500 font-num">{probe.probeNo}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="flex items-center gap-1.5 text-gray-400">
+                            <Thermometer className="w-3.5 h-3.5" />
+                            <span className={cn(
+                              "font-num",
+                              probe.deviceStatus === "abnormal" ? "text-danger-400" : "text-ice-300"
+                            )}>
+                              {probe.currentTemp}°C
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-gray-400">
+                            <Battery className={cn("w-3.5 h-3.5", getBatteryColor(probe.batteryLevel))} />
+                            <span className={`font-num ${getBatteryColor(probe.batteryLevel)}`}>
+                              {probe.batteryLevel}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedProbe && selectedPoint && (
+                <div className="glass-card p-5">
+                  <h3 className="text-sm font-semibold text-white mb-3">点位详情</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">点位名称</span>
+                      <span className="text-white">{selectedPoint.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">类型</span>
+                      <span className={selectedPoint.type === "mandatory" ? "text-ice-400" : "text-gray-400"}>
+                        {selectedPoint.type === "mandatory" ? "必放点位" : "可选点位"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">设备状态</span>
+                      <span className={cn(
+                        selectedProbe.deviceStatus === "online" && "text-success-400",
+                        selectedProbe.deviceStatus === "offline" && "text-gray-400",
+                        selectedProbe.deviceStatus === "abnormal" && "text-danger-400"
+                      )}>
+                        {getStatusLabel(selectedProbe.deviceStatus)}
+                      </span>
+                    </div>
+                    <div className="pt-2">
+                      <p className="text-gray-500 text-xs mb-1.5">点位说明</p>
+                      <p className="text-gray-300 text-sm bg-cold-800/50 rounded-lg p-2.5">
+                        {selectedPoint.description}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {showRejectModal && (

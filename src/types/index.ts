@@ -17,6 +17,38 @@ export interface LineTemplate {
   createdAt: string;
   updatedAt: string;
   usageCount: number;
+  currentVersion: string;
+  versions: TemplateVersion[];
+  lastChangeNote?: string;
+}
+
+export interface TemplateVersion {
+  id: string;
+  version: string;
+  name: string;
+  description: string;
+  carriage: {
+    length: number;
+    width: number;
+    height: number;
+    volume: number;
+  };
+  zones: TemperatureZone[];
+  points: ProbePoint[];
+  sensitivityLevel: "normal" | "sensitive" | "highly-sensitive";
+  createdAt: string;
+  createdBy: string;
+  changeNote: string;
+}
+
+export interface TemplateUsageRecord {
+  id: string;
+  templateId: string;
+  version: string;
+  taskNo: string;
+  vehicleNo: string;
+  usedAt: string;
+  usedBy: string;
 }
 
 export interface TemperatureZone {
@@ -51,6 +83,16 @@ export interface AuditTask {
   deployedProbes: DeployedProbe[];
   missingPoints: string[];
   auditRecord?: AuditRecord;
+  previousSubmission?: PreviousSubmission;
+  resubmitCount: number;
+}
+
+export interface PreviousSubmission {
+  submittedAt: string;
+  submittedBy: string;
+  deployedProbes: DeployedProbe[];
+  missingPoints: string[];
+  auditRecord: AuditRecord;
 }
 
 export interface DeployedProbe {
@@ -90,6 +132,7 @@ export interface ReviewTask {
   reviewStatus: "pending" | "reviewed";
   probeData: ProbeTemperatureData[];
   events: TransportEvent[];
+  anomalies: TemperatureAnomaly[];
   reviewConclusion?: ReviewConclusion;
 }
 
@@ -106,6 +149,21 @@ export interface TransportEvent {
   type: "door-open" | "transfer" | "unload" | "other";
   typeName: string;
   timestamp: string;
+  description: string;
+  anomalyId?: string;
+}
+
+export interface TemperatureAnomaly {
+  id: string;
+  probeId: string;
+  probeName: string;
+  startTime: string;
+  endTime: string;
+  maxTemp: number;
+  minTemp: number;
+  avgTemp: number;
+  severity: "mild" | "moderate" | "severe";
+  relatedEventIds: string[];
   description: string;
 }
 

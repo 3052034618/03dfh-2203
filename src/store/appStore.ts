@@ -7,6 +7,9 @@ import type {
   ProbePoint,
   TemperatureZone,
   TransportEvent,
+  TemplateVersion,
+  DeployedProbe,
+  TemperatureAnomaly,
 } from "@/types";
 import {
   mockTemplates,
@@ -86,6 +89,25 @@ interface AppState {
   addTransportEvent: (reviewTaskId: string, event: Omit<TransportEvent, "id">) => void;
   updateTransportEvent: (reviewTaskId: string, eventId: string, updates: Partial<TransportEvent>) => void;
   deleteTransportEvent: (reviewTaskId: string, eventId: string) => void;
+
+  createTemplateVersion: (templateId: string, changeNote: string) => void;
+  getTemplateVersions: (templateId: string) => TemplateVersion[];
+  restoreTemplateVersion: (templateId: string, versionId: string) => void;
+  compareTemplateVersions: (templateId: string, versionId1: string, versionId2: string) => {
+    addedZones: TemperatureZone[];
+    removedZones: TemperatureZone[];
+    modifiedZones: TemperatureZone[];
+    addedPoints: ProbePoint[];
+    removedPoints: ProbePoint[];
+  };
+
+  resubmitAudit: (taskId: string, probes: DeployedProbe[], missingPoints: string[]) => void;
+  approveResubmit: (taskId: string, remarks: string) => void;
+
+  addTemperatureAnomaly: (reviewTaskId: string, anomaly: Omit<TemperatureAnomaly, "id">) => void;
+  updateTemperatureAnomaly: (reviewTaskId: string, anomalyId: string, updates: Partial<TemperatureAnomaly>) => void;
+  deleteTemperatureAnomaly: (reviewTaskId: string, anomalyId: string) => void;
+  linkEventToAnomaly: (reviewTaskId: string, eventId: string, anomalyId: string) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -313,6 +335,268 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? { ...r, events: r.events.filter((e) => e.id !== eventId) }
           : r
       ),
+    }));
+    get().persist();
+  },
+
+  /** 基于当前模板最新状态创建新版本，版本号递增，保存到 versions 数组头部 */
+  createTemplateVersion: (templateId, changeNote) => {
+    const template = get().templates.find((t) => t.id === templateId);
+    if (!template) return;
+
+    const currentVersion = template.currentVersion || "v1.0";
+    const match = currentVersion.match(/^v(\d+)(?:\.(\d+))?$/);
+    let newVersion: string;
+    if (match) {
+      const major = parseInt(match[1], 10);
+      const minor = match[2] ? parseInt(match[2], 10) : 0;
+      if (minor === 0 && !match[2]) {
+        newVersion = `v${major + 1}.0`;
+      } else {
+        newVersion = `v${major}.${minor + 1}`;
+      }
+    } else {
+      newVersion = "v2.0";
+    }
+
+    const newVersionRecord: TemplateVersion = {
+      id: `ver-${Date.now()}`,
+      version: newVersion,
+      name: template.name,
+      description: template.description,
+      carriage: { ...template.carriage },
+      zones: template.zones.map((z) => ({ ...z })),
+      points: template.points.map((p) => ({ ...p })),
+      sensitivityLevel: template.sensitivityLevel,
+      createdAt: new Date().toISOString(),
+      createdBy: "当前用户",
+      changeNote,
+    };
+
+    set((state) => ({
+      templates: state.templates.map((t) =>
+        t.id === templateId
+          ? {
+              ...t,
+              currentVersion: newVersion,
+              versions: [newVersionRecord, ...t.versions],
+              lastChangeNote: changeNote,
+              updatedAt: new Date().toISOString(),
+            }
+          : t
+      ),
+    }));
+    get().persist();
+  },
+
+  /** 返回该模板所有版本，按创建时间倒序排列（最新在前） */
+  getTemplateVersions: (templateId) => {
+    const template = get().templates.find((t) => t.id === templateId);
+    if (!template) return [];
+    return [...template.versions].sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  },
+
+  /** 将指定版本的配置恢复为当前模板，保持 zones 和 points 的 id 与版本中一致 */
+  restoreTemplateVersion: (templateId, versionId) => {
+    const template = get().templates.find((t) => t.id === templateId);
+    if (!template) return;
+
+    const version = template.versions.find((v) => v.id === versionId);
+    if (!version) return;
+
+    set((state) => ({
+      templates: state.templates.map((t) =>
+        t.id === templateId
+          ? {
+              ...t,
+              zones: version.zones.map((z) => ({ ...z })),
+              points: version.points.map((p) => ({ ...p })),
+              carriage: { ...version.carriage },
+              sensitivityLevel: version.sensitivityLevel,
+              description: version.description,
+              updatedAt: new Date().toISOString(),
+            }
+          : t
+      ),
+    }));
+    get().persist();
+  },
+
+  /** 比较两个版本的差异，返回增加/删除/修改的 zone 和增加/删除的 point */
+  compareTemplateVersions: (templateId, versionId1, versionId2) => {
+    const template = get().templates.find((t) => t.id === templateId);
+    if (!template) {
+      return {
+        addedZones: [],
+        removedZones: [],
+        modifiedZones: [],
+        addedPoints: [],
+        removedPoints: [],
+      };
+    }
+
+    const v1 = template.versions.find((v) => v.id === versionId1);
+    const v2 = template.versions.find((v) => v.id === versionId2);
+    if (!v1 || !v2) {
+      return {
+        addedZones: [],
+        removedZones: [],
+        modifiedZones: [],
+        addedPoints: [],
+        removedPoints: [],
+      };
+    }
+
+    const v1ZoneIds = new Set(v1.zones.map((z) => z.id));
+    const v2ZoneIds = new Set(v2.zones.map((z) => z.id));
+    const addedZones = v2.zones.filter((z) => !v1ZoneIds.has(z.id));
+    const removedZones = v1.zones.filter((z) => !v2ZoneIds.has(z.id));
+    const modifiedZones = v2.zones.filter((z) => {
+      const v1Zone = v1.zones.find((old) => old.id === z.id);
+      if (!v1Zone) return false;
+      return JSON.stringify(v1Zone) !== JSON.stringify(z);
+    });
+
+    const v1PointIds = new Set(v1.points.map((p) => p.id));
+    const v2PointIds = new Set(v2.points.map((p) => p.id));
+    const addedPoints = v2.points.filter((p) => !v1PointIds.has(p.id));
+    const removedPoints = v1.points.filter((p) => !v2PointIds.has(p.id));
+
+    return {
+      addedZones,
+      removedZones,
+      modifiedZones,
+      addedPoints,
+      removedPoints,
+    };
+  },
+
+  /** 模拟现场重新提交，保存历史提交记录，状态改为 resubmitted */
+  resubmitAudit: (taskId, probes, missingPoints) => {
+    const task = get().auditTasks.find((a) => a.id === taskId);
+    if (!task || !task.auditRecord) return;
+
+    const previousSubmission = {
+      submittedAt: task.submittedAt,
+      submittedBy: task.submittedBy,
+      deployedProbes: task.deployedProbes.map((p) => ({ ...p })),
+      missingPoints: [...task.missingPoints],
+      auditRecord: { ...task.auditRecord },
+    };
+
+    set((state) => ({
+      auditTasks: state.auditTasks.map((a) =>
+        a.id === taskId
+          ? {
+              ...a,
+              status: "resubmitted",
+              submittedAt: new Date().toISOString(),
+              deployedProbes: probes.map((p) => ({ ...p })),
+              missingPoints: [...missingPoints],
+              previousSubmission,
+              resubmitCount: a.resubmitCount + 1,
+            }
+          : a
+      ),
+    }));
+    get().persist();
+  },
+
+  /** 审核重提通过，更新审核记录和状态，同步更新仪表盘统计 */
+  approveResubmit: (taskId, remarks) => {
+    set((state) => ({
+      auditTasks: state.auditTasks.map((a) =>
+        a.id === taskId
+          ? {
+              ...a,
+              status: "approved",
+              auditRecord: {
+                auditor: "质控专员-当前用户",
+                auditedAt: new Date().toISOString(),
+                result: "approved",
+                remarks,
+              },
+            }
+          : a
+      ),
+      dashboardStats: {
+        ...state.dashboardStats,
+        pendingAudits: Math.max(0, state.dashboardStats.pendingAudits - 1),
+        recentAudits: state.dashboardStats.recentAudits.map((a) =>
+          a.id === taskId ? { ...a, status: "approved" as const } : a
+        ),
+      },
+    }));
+    get().persist();
+  },
+
+  /** 添加一个温度异常区间，自动生成 id */
+  addTemperatureAnomaly: (reviewTaskId, anomaly) => {
+    const newAnomaly: TemperatureAnomaly = {
+      ...anomaly,
+      id: `anom-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    };
+    set((state) => ({
+      reviewTasks: state.reviewTasks.map((r) =>
+        r.id === reviewTaskId
+          ? { ...r, anomalies: [...r.anomalies, newAnomaly] }
+          : r
+      ),
+    }));
+    get().persist();
+  },
+
+  /** 更新温度异常区间 */
+  updateTemperatureAnomaly: (reviewTaskId, anomalyId, updates) => {
+    set((state) => ({
+      reviewTasks: state.reviewTasks.map((r) =>
+        r.id === reviewTaskId
+          ? {
+              ...r,
+              anomalies: r.anomalies.map((a) =>
+                a.id === anomalyId ? { ...a, ...updates } : a
+              ),
+            }
+          : r
+      ),
+    }));
+    get().persist();
+  },
+
+  /** 删除温度异常区间，同时清理关联事件的 anomalyId */
+  deleteTemperatureAnomaly: (reviewTaskId, anomalyId) => {
+    set((state) => ({
+      reviewTasks: state.reviewTasks.map((r) => {
+        if (r.id !== reviewTaskId) return r;
+        return {
+          ...r,
+          anomalies: r.anomalies.filter((a) => a.id !== anomalyId),
+          events: r.events.map((e) =>
+            e.anomalyId === anomalyId ? { ...e, anomalyId: undefined } : e
+          ),
+        };
+      }),
+    }));
+    get().persist();
+  },
+
+  /** 将事件关联到异常，同时更新事件和异常的关联关系 */
+  linkEventToAnomaly: (reviewTaskId, eventId, anomalyId) => {
+    set((state) => ({
+      reviewTasks: state.reviewTasks.map((r) => {
+        if (r.id !== reviewTaskId) return r;
+        const updatedEvents = r.events.map((e) =>
+          e.id === eventId ? { ...e, anomalyId } : e
+        );
+        const updatedAnomalies = r.anomalies.map((a) => {
+          if (a.id !== anomalyId) return a;
+          if (a.relatedEventIds.includes(eventId)) return a;
+          return { ...a, relatedEventIds: [...a.relatedEventIds, eventId] };
+        });
+        return { ...r, events: updatedEvents, anomalies: updatedAnomalies };
+      }),
     }));
     get().persist();
   },

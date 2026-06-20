@@ -1,4 +1,4 @@
-import type { LineTemplate, AuditTask, ReviewTask, DashboardStats } from "@/types";
+import type { LineTemplate, AuditTask, ReviewTask, DashboardStats, TemplateVersion, PreviousSubmission, TemperatureAnomaly } from "@/types";
 
 export const mockTemplates: LineTemplate[] = [
   {
@@ -40,6 +40,76 @@ export const mockTemplates: LineTemplate[] = [
     createdAt: "2025-01-15T10:00:00Z",
     updatedAt: "2025-06-10T14:30:00Z",
     usageCount: 156,
+    currentVersion: "v2.0",
+    lastChangeNote: "调整为双温区布局，增加冷冻区监测点",
+    versions: [
+      {
+        id: "tplv-001-v1",
+        version: "v1.0",
+        name: "京沪干线标准方案",
+        description: "初始版本，单温区冷藏配置",
+        carriage: { length: 9.6, width: 2.4, height: 2.6, volume: 59.9 },
+        zones: [
+          {
+            id: "zone-1",
+            name: "冷藏区",
+            color: "#00D4FF",
+            targetTemp: 4,
+            tempRange: { min: 2, max: 8 },
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+          },
+        ],
+        points: [
+          { id: "p1", name: "前顶部", type: "mandatory", x: 10, y: 15, zoneId: "zone-1", description: "车厢前部靠近制冷机组" },
+          { id: "p2", name: "前中部", type: "mandatory", x: 10, y: 50, zoneId: "zone-1", description: "冷藏区中部监测点" },
+          { id: "p3", name: "前底部", type: "mandatory", x: 10, y: 85, zoneId: "zone-1", description: "靠近车门底部，易受开门影响" },
+          { id: "p4", name: "中顶部", type: "optional", x: 50, y: 15, zoneId: "zone-1", description: "车厢中部顶部" },
+          { id: "p5", name: "后底部", type: "mandatory", x: 90, y: 85, zoneId: "zone-1", description: "车厢后部底部" },
+        ],
+        sensitivityLevel: "sensitive",
+        createdAt: "2025-01-15T10:00:00Z",
+        createdBy: "质控专员-刘敏",
+        changeNote: "初始版本创建",
+      },
+      {
+        id: "tplv-001-v2",
+        version: "v2.0",
+        name: "京沪干线标准方案 (v2)",
+        description: "适用于北京-上海长途干线运输，9.6米冷藏车，双温区配置",
+        carriage: { length: 9.6, width: 2.4, height: 2.6, volume: 59.9 },
+        zones: [
+          {
+            id: "zone-1",
+            name: "冷藏区",
+            color: "#00D4FF",
+            targetTemp: 4,
+            tempRange: { min: 2, max: 8 },
+            bounds: { x: 0, y: 0, width: 60, height: 100 },
+          },
+          {
+            id: "zone-2",
+            name: "冷冻区",
+            color: "#7C3AED",
+            targetTemp: -18,
+            tempRange: { min: -22, max: -15 },
+            bounds: { x: 60, y: 0, width: 40, height: 100 },
+          },
+        ],
+        points: [
+          { id: "p1", name: "前顶部", type: "mandatory", x: 10, y: 15, zoneId: "zone-1", description: "车厢前部靠近制冷机组" },
+          { id: "p2", name: "前中部", type: "mandatory", x: 10, y: 50, zoneId: "zone-1", description: "冷藏区中部监测点" },
+          { id: "p3", name: "前底部", type: "mandatory", x: 10, y: 85, zoneId: "zone-1", description: "靠近车门底部，易受开门影响" },
+          { id: "p4", name: "中顶部", type: "optional", x: 35, y: 15, zoneId: "zone-1", description: "冷藏区中部顶部" },
+          { id: "p5", name: "后顶部", type: "mandatory", x: 80, y: 15, zoneId: "zone-2", description: "冷冻区后部顶部" },
+          { id: "p6", name: "后中部", type: "mandatory", x: 80, y: 50, zoneId: "zone-2", description: "冷冻区核心监测点" },
+          { id: "p7", name: "后底部", type: "mandatory", x: 80, y: 85, zoneId: "zone-2", description: "冷冻区底部回风处" },
+        ],
+        sensitivityLevel: "sensitive",
+        createdAt: "2025-06-10T14:30:00Z",
+        createdBy: "质控专员-刘敏",
+        changeNote: "调整为双温区布局，增加冷冻区监测点",
+      },
+    ],
   },
   {
     id: "tpl-002",
@@ -71,6 +141,39 @@ export const mockTemplates: LineTemplate[] = [
     createdAt: "2025-02-20T09:00:00Z",
     updatedAt: "2025-05-15T11:00:00Z",
     usageCount: 89,
+    currentVersion: "v1.0",
+    lastChangeNote: "初始版本发布",
+    versions: [
+      {
+        id: "tplv-002-v1",
+        version: "v1.0",
+        name: "广深干线冷冻方案",
+        description: "广州-深圳干线，全冷冻区，适用于速冻食品运输",
+        carriage: { length: 12.5, width: 2.45, height: 2.7, volume: 82.7 },
+        zones: [
+          {
+            id: "zone-1",
+            name: "冷冻区",
+            color: "#7C3AED",
+            targetTemp: -20,
+            tempRange: { min: -25, max: -18 },
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+          },
+        ],
+        points: [
+          { id: "p1", name: "前顶部", type: "mandatory", x: 8, y: 12, zoneId: "zone-1", description: "靠近制冷机组出风口" },
+          { id: "p2", name: "前底部", type: "mandatory", x: 8, y: 88, zoneId: "zone-1", description: "前部回风口" },
+          { id: "p3", name: "中顶部", type: "mandatory", x: 50, y: 12, zoneId: "zone-1", description: "车厢中部顶部" },
+          { id: "p4", name: "中底部", type: "mandatory", x: 50, y: 88, zoneId: "zone-1", description: "车厢中部底部" },
+          { id: "p5", name: "后顶部", type: "mandatory", x: 92, y: 12, zoneId: "zone-1", description: "车厢尾部顶部" },
+          { id: "p6", name: "后底部", type: "mandatory", x: 92, y: 88, zoneId: "zone-1", description: "靠近尾部车门" },
+        ],
+        sensitivityLevel: "normal",
+        createdAt: "2025-02-20T09:00:00Z",
+        createdBy: "质控专员-刘敏",
+        changeNote: "初始版本发布",
+      },
+    ],
   },
   {
     id: "tpl-003",
@@ -100,6 +203,37 @@ export const mockTemplates: LineTemplate[] = [
     createdAt: "2025-03-01T14:00:00Z",
     updatedAt: "2025-06-01T10:00:00Z",
     usageCount: 312,
+    currentVersion: "v1.0",
+    lastChangeNote: "初始版本发布",
+    versions: [
+      {
+        id: "tplv-003-v1",
+        version: "v1.0",
+        name: "城市配送标准方案",
+        description: "适用于城市多点配送，4.2米冷藏车，单温区，频繁开门",
+        carriage: { length: 4.2, width: 2.1, height: 2.2, volume: 19.4 },
+        zones: [
+          {
+            id: "zone-1",
+            name: "冷藏区",
+            color: "#00D4FF",
+            targetTemp: 5,
+            tempRange: { min: 0, max: 10 },
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+          },
+        ],
+        points: [
+          { id: "p1", name: "前上部", type: "mandatory", x: 15, y: 20, zoneId: "zone-1", description: "靠近制冷机" },
+          { id: "p2", name: "中部", type: "mandatory", x: 50, y: 50, zoneId: "zone-1", description: "车厢中心位置" },
+          { id: "p3", name: "后部门口", type: "mandatory", x: 85, y: 70, zoneId: "zone-1", description: "频繁开门，温度波动大" },
+          { id: "p4", name: "货品中心", type: "optional", x: 50, y: 75, zoneId: "zone-1", description: "货堆内部温度" },
+        ],
+        sensitivityLevel: "sensitive",
+        createdAt: "2025-03-01T14:00:00Z",
+        createdBy: "质控专员-刘敏",
+        changeNote: "初始版本发布",
+      },
+    ],
   },
   {
     id: "tpl-004",
@@ -136,6 +270,44 @@ export const mockTemplates: LineTemplate[] = [
     createdAt: "2025-04-10T08:30:00Z",
     updatedAt: "2025-05-20T16:00:00Z",
     usageCount: 45,
+    currentVersion: "v1.0",
+    lastChangeNote: "初始版本发布",
+    versions: [
+      {
+        id: "tplv-004-v1",
+        version: "v1.0",
+        name: "生鲜城配方案",
+        description: "生鲜蔬果配送，多温区，高湿度环境",
+        carriage: { length: 6.8, width: 2.2, height: 2.4, volume: 35.9 },
+        zones: [
+          {
+            id: "zone-1",
+            name: "冷藏区",
+            color: "#00D4FF",
+            targetTemp: 6,
+            tempRange: { min: 2, max: 10 },
+            bounds: { x: 0, y: 0, width: 65, height: 100 },
+          },
+          {
+            id: "zone-2",
+            name: "恒温区",
+            color: "#2DD4A0",
+            targetTemp: 12,
+            tempRange: { min: 8, max: 15 },
+            bounds: { x: 65, y: 0, width: 35, height: 100 },
+          },
+        ],
+        points: [
+          { id: "p1", name: "冷藏前", type: "mandatory", x: 10, y: 30, zoneId: "zone-1", description: "前部监测" },
+          { id: "p2", name: "冷藏后", type: "mandatory", x: 45, y: 70, zoneId: "zone-1", description: "后部靠近隔帘" },
+          { id: "p3", name: "恒温区", type: "mandatory", x: 80, y: 50, zoneId: "zone-2", description: "恒温区核心" },
+        ],
+        sensitivityLevel: "normal",
+        createdAt: "2025-04-10T08:30:00Z",
+        createdBy: "质控专员-刘敏",
+        changeNote: "初始版本发布",
+      },
+    ],
   },
   {
     id: "tpl-005",
@@ -167,6 +339,39 @@ export const mockTemplates: LineTemplate[] = [
     createdAt: "2025-01-20T10:00:00Z",
     updatedAt: "2025-06-15T09:00:00Z",
     usageCount: 78,
+    currentVersion: "v1.0",
+    lastChangeNote: "初始版本发布",
+    versions: [
+      {
+        id: "tplv-005-v1",
+        version: "v1.0",
+        name: "医药冷链标准方案",
+        description: "GSP认证医药冷链运输，全程温度监控，双探头冗余",
+        carriage: { length: 7.6, width: 2.3, height: 2.5, volume: 43.7 },
+        zones: [
+          {
+            id: "zone-1",
+            name: "药品区",
+            color: "#FF8A3D",
+            targetTemp: 5,
+            tempRange: { min: 2, max: 8 },
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+          },
+        ],
+        points: [
+          { id: "p1", name: "前顶部A", type: "mandatory", x: 12, y: 15, zoneId: "zone-1", description: "主探头1号" },
+          { id: "p2", name: "前顶部B", type: "mandatory", x: 22, y: 15, zoneId: "zone-1", description: "冗余探头1号" },
+          { id: "p3", name: "中部A", type: "mandatory", x: 50, y: 40, zoneId: "zone-1", description: "主探头2号" },
+          { id: "p4", name: "中部B", type: "mandatory", x: 50, y: 60, zoneId: "zone-1", description: "冗余探头2号" },
+          { id: "p5", name: "后底部A", type: "mandatory", x: 88, y: 85, zoneId: "zone-1", description: "主探头3号" },
+          { id: "p6", name: "后底部B", type: "mandatory", x: 78, y: 85, zoneId: "zone-1", description: "冗余探头3号" },
+        ],
+        sensitivityLevel: "highly-sensitive",
+        createdAt: "2025-01-20T10:00:00Z",
+        createdBy: "质控专员-刘敏",
+        changeNote: "初始版本发布",
+      },
+    ],
   },
   {
     id: "tpl-006",
@@ -195,6 +400,36 @@ export const mockTemplates: LineTemplate[] = [
     createdAt: "2025-03-15T11:00:00Z",
     updatedAt: "2025-06-05T14:00:00Z",
     usageCount: 34,
+    currentVersion: "v1.0",
+    lastChangeNote: "初始版本发布",
+    versions: [
+      {
+        id: "tplv-006-v1",
+        version: "v1.0",
+        name: "生物制品运输方案",
+        description: "疫苗、生物制品运输，超低温监控，全程溯源",
+        carriage: { length: 5.2, width: 2.2, height: 2.3, volume: 26.3 },
+        zones: [
+          {
+            id: "zone-1",
+            name: "超低温区",
+            color: "#7C3AED",
+            targetTemp: -70,
+            tempRange: { min: -80, max: -60 },
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+          },
+        ],
+        points: [
+          { id: "p1", name: "顶部监测点", type: "mandatory", x: 50, y: 10, zoneId: "zone-1", description: "干冰区域顶部" },
+          { id: "p2", name: "中心监测点", type: "mandatory", x: 50, y: 50, zoneId: "zone-1", description: "货品中心位置" },
+          { id: "p3", name: "底部监测点", type: "mandatory", x: 50, y: 90, zoneId: "zone-1", description: "包装箱底部" },
+        ],
+        sensitivityLevel: "highly-sensitive",
+        createdAt: "2025-03-15T11:00:00Z",
+        createdBy: "质控专员-刘敏",
+        changeNote: "初始版本发布",
+      },
+    ],
   },
 ];
 
@@ -239,6 +474,7 @@ export const mockAuditTasks: AuditTask[] = [
       { id: "dp6", pointId: "p7", probeNo: "T-2025-006", photoUrl: "/probe6.jpg", deviceStatus: "online", batteryLevel: 93, currentTemp: -19.0 },
     ],
     missingPoints: ["p4"],
+    resubmitCount: 0,
   },
   {
     id: "audit-002",
@@ -256,6 +492,7 @@ export const mockAuditTasks: AuditTask[] = [
       { id: "dp3", pointId: "p3", probeNo: "T-2025-012", photoUrl: "/probe3.jpg", deviceStatus: "abnormal", batteryLevel: 45, currentTemp: 8.3 },
     ],
     missingPoints: [],
+    resubmitCount: 0,
   },
   {
     id: "audit-003",
@@ -276,6 +513,27 @@ export const mockAuditTasks: AuditTask[] = [
       { id: "dp6", pointId: "p6", probeNo: "T-2025-025", photoUrl: "/probe6.jpg", deviceStatus: "online", batteryLevel: 92, currentTemp: 4.7 },
     ],
     missingPoints: [],
+    resubmitCount: 1,
+    previousSubmission: {
+      submittedAt: "2025-06-20T03:50:00Z",
+      submittedBy: "王师傅",
+      deployedProbes: [
+        { id: "dp1", pointId: "p1", probeNo: "T-2025-020", photoUrl: "/probe1.jpg", deviceStatus: "online", batteryLevel: 94, currentTemp: 4.8 },
+        { id: "dp2", pointId: "p2", probeNo: "T-2025-021", photoUrl: "/probe2.jpg", deviceStatus: "online", batteryLevel: 91, currentTemp: 4.6 },
+        { id: "dp3", pointId: "p4", probeNo: "T-2025-023", photoUrl: "/probe4.jpg", deviceStatus: "abnormal", batteryLevel: 35, currentTemp: 6.2 },
+      ],
+      missingPoints: ["p3", "p6"],
+      auditRecord: {
+        auditor: "质控专员-刘敏",
+        auditedAt: "2025-06-20T04:30:00Z",
+        result: "rejected",
+        remarks: "探头数量不足，恒温区点位缺失，请补充",
+        adjustmentMarks: [
+          { id: "adj1", pointId: "p3", x: 50, y: 40, description: "中部主探头缺失，请布放" },
+          { id: "adj2", pointId: "p6", x: 78, y: 85, description: "后底部冗余探头缺失，请补充" },
+        ],
+      },
+    },
   },
   {
     id: "audit-004",
@@ -302,6 +560,7 @@ export const mockAuditTasks: AuditTask[] = [
       result: "approved",
       remarks: "布控规范，设备状态良好，准予放行",
     },
+    resubmitCount: 0,
   },
   {
     id: "audit-005",
@@ -328,6 +587,7 @@ export const mockAuditTasks: AuditTask[] = [
         { id: "adj2", pointId: "p3", x: 80, y: 50, description: "恒温区缺少探头，请布放" },
       ],
     },
+    resubmitCount: 0,
   },
 ];
 
@@ -379,6 +639,34 @@ export const mockReviewTasks: ReviewTask[] = [
       { id: "e3", type: "transfer", typeName: "换车", timestamp: "2025-06-18T20:00:00Z", description: "南京换挂，货物转接" },
       { id: "e4", type: "unload", typeName: "卸货", timestamp: "2025-06-19T14:00:00Z", description: "上海虹桥冷库卸货完成" },
     ],
+    anomalies: [
+      {
+        id: "anomaly-001",
+        probeId: "probe-3",
+        probeName: "前底部",
+        startTime: "2025-06-18T09:45:00Z",
+        endTime: "2025-06-18T10:45:00Z",
+        maxTemp: 9.2,
+        minTemp: 5.1,
+        avgTemp: 7.2,
+        severity: "mild",
+        relatedEventIds: ["e1"],
+        description: "开门时段温度升高，超过冷藏区上限 8℃，持续约 60 分钟",
+      },
+      {
+        id: "anomaly-002",
+        probeId: "probe-5",
+        probeName: "后底部",
+        startTime: "2025-06-18T19:30:00Z",
+        endTime: "2025-06-18T20:30:00Z",
+        maxTemp: -14.3,
+        minTemp: -19.8,
+        avgTemp: -16.8,
+        severity: "moderate",
+        relatedEventIds: ["e3"],
+        description: "换车期间温度波动明显，最高温度超出冷冻区上限 -15℃",
+      },
+    ],
     reviewConclusion: {
       reviewedBy: "质控专员-刘敏",
       reviewedAt: "2025-06-19T16:30:00Z",
@@ -424,6 +712,21 @@ export const mockReviewTasks: ReviewTask[] = [
       { id: "e4", type: "door-open", typeName: "开门", timestamp: "2025-06-18T14:30:00Z", description: "第四站配送点" },
       { id: "e5", type: "door-open", typeName: "开门", timestamp: "2025-06-18T16:00:00Z", description: "第五站配送点" },
       { id: "e6", type: "unload", typeName: "卸货", timestamp: "2025-06-18T17:30:00Z", description: "返回冷库卸货" },
+    ],
+    anomalies: [
+      {
+        id: "anomaly-003",
+        probeId: "probe-3",
+        probeName: "后部门口",
+        startTime: "2025-06-18T08:30:00Z",
+        endTime: "2025-06-18T18:00:00Z",
+        maxTemp: 13.5,
+        minTemp: 6.2,
+        avgTemp: 9.1,
+        severity: "moderate",
+        relatedEventIds: ["e1", "e2", "e3", "e4", "e5"],
+        description: "多次开门累计导致后部门口温度持续偏高，白天平均温度超过 10℃，建议增加隔帘或缩短开门时间",
+      },
     ],
     reviewConclusion: {
       reviewedBy: "质控专员-周杰",
@@ -485,6 +788,7 @@ export const mockReviewTasks: ReviewTask[] = [
       { id: "e1", type: "door-open", typeName: "开门", timestamp: "2025-06-17T10:00:00Z", description: "深圳人民医院卸货" },
       { id: "e2", type: "door-open", typeName: "开门", timestamp: "2025-06-17T14:00:00Z", description: "广州中山医院卸货" },
     ],
+    anomalies: [],
   },
   {
     id: "review-004",
@@ -535,6 +839,21 @@ export const mockReviewTasks: ReviewTask[] = [
     ],
     events: [
       { id: "e1", type: "unload", typeName: "卸货", timestamp: "2025-06-17T05:30:00Z", description: "广州白云冷库卸货" },
+    ],
+    anomalies: [
+      {
+        id: "anomaly-004",
+        probeId: "probe-5",
+        probeName: "后顶部",
+        startTime: "2025-06-17T05:00:00Z",
+        endTime: "2025-06-17T06:00:00Z",
+        maxTemp: -16.2,
+        minTemp: -19.8,
+        avgTemp: -18.1,
+        severity: "mild",
+        relatedEventIds: ["e1"],
+        description: "卸货前后顶部温度略有回升，接近冷冻区上限 -15℃，属正常范围波动",
+      },
     ],
     reviewConclusion: {
       reviewedBy: "质控专员-周杰",

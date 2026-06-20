@@ -6,6 +6,7 @@ interface ProbePhotoProps {
   probeNo: string;
   pointName: string;
   seed?: string;
+  photoUrl?: string;
   className?: string;
 }
 
@@ -18,7 +19,7 @@ const photoThemes = [
   { bg: "back", title: "车厢后部" },
 ];
 
-export default function ProbePhoto({ probeNo, pointName, seed, className }: ProbePhotoProps) {
+export default function ProbePhoto({ probeNo, pointName, seed, photoUrl, className }: ProbePhotoProps) {
   const [imgStatus, setImgStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [showZoom, setShowZoom] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -31,7 +32,9 @@ export default function ProbePhoto({ probeNo, pointName, seed, className }: Prob
   ) % photoThemes.length;
   const theme = photoThemes[themeIdx];
 
-  const imageUrl = `https://picsum.photos/seed/${encodeURIComponent(seed || probeNo)}-${attempt}/800/500`;
+  const imageUrl = photoUrl
+    ? photoUrl
+    : `https://picsum.photos/seed/${encodeURIComponent(seed || probeNo)}-${attempt}/800/500`;
 
   const handleRetry = (e: React.MouseEvent) => {
     e.stopPropagation();
