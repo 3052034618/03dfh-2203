@@ -18,6 +18,8 @@ import {
   RefreshCw,
   Star,
   Eye,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import {
   LineChart,
@@ -38,7 +40,7 @@ import type { ProbeTemperatureData, TransportEvent } from "@/types";
 export default function ReviewDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getReviewById, getTemplateById, saveReviewConclusion } = useAppStore();
+  const { getReviewById, getTemplateById, saveReviewConclusion, addTransportEvent, updateTransportEvent, deleteTransportEvent } = useAppStore();
 
   const reviewTask = getReviewById(id || "");
   const template = reviewTask ? getTemplateById(reviewTask.templateId) : undefined;
@@ -53,6 +55,20 @@ export default function ReviewDetail() {
   const [suggestions, setSuggestions] = useState(
     reviewTask?.reviewConclusion?.optimizationSuggestions || ""
   );
+
+  const [showAddEventModal, setShowAddEventModal] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [eventForm, setEventForm] = useState<{
+    type: "door-open" | "transfer" | "unload" | "other";
+    typeName: string;
+    timestamp: string;
+    description: string;
+  }>({
+    type: "door-open",
+    typeName: "开门",
+    timestamp: "",
+    description: "",
+  });
 
   if (!reviewTask || !template) {
     return (
@@ -135,6 +151,68 @@ export default function ReviewDetail() {
       blindSpots,
     });
     setIsEditing(false);
+  };
+
+  const eventTypeOptions: { type: "door-open" | "transfer" | "unload" | "other"; typeName: string; Icon: typeof DoorOpen }[] = [
+    { type: "door-open", typeName: "开门", Icon: DoorOpen },
+    { type: "transfer", typeName: "换车", Icon: RefreshCw },
+    { type: "unload", typeName: "卸货", Icon: Package },
+    { type: "other", typeName: "其他", Icon: Zap },
+  ];
+
+  const toLocalInputValue = (iso: string): string => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const handleOpenAddModal = () => {
+    setEditingEventId(null);
+    setEventForm({
+      type: "door-open",
+      typeName: "开门",
+      timestamp: toLocalInputValue(reviewTask.startTime),
+      description: "",
+    });
+    setShowAddEventModal(true);
+  };
+
+  const handleOpenEditModal = (event: TransportEvent) => {
+    setEditingEventId(event.id);
+    setEventForm({
+      type: event.type,
+      typeName: event.typeName,
+      timestamp: toLocalInputValue(event.timestamp),
+      description: event.description,
+    });
+    setShowAddEventModal(true);
+  };
+
+  const handleSaveEvent = () => {
+    const isoTimestamp = new Date(eventForm.timestamp).toISOString();
+    if (editingEventId) {
+      updateTransportEvent(reviewTask.id, editingEventId, {
+        type: eventForm.type,
+        typeName: eventForm.typeName,
+        timestamp: isoTimestamp,
+        description: eventForm.description,
+      });
+    } else {
+      addTransportEvent(reviewTask.id, {
+        type: eventForm.type,
+        typeName: eventForm.typeName,
+        timestamp: isoTimestamp,
+        description: eventForm.description,
+      });
+    }
+    setShowAddEventModal(false);
+    setEditingEventId(null);
+  };
+
+  const handleDeleteEvent = (eventId: string) => {
+    if (confirm("确认删除该运输事件？")) {
+      deleteTransportEvent(reviewTask.id, eventId);
+    }
   };
 
   const hasConclusion = !!reviewTask.reviewConclusion;
@@ -329,10 +407,19 @@ export default function ReviewDetail() {
           </div>
 
           <div className="glass-card p-5">
-            <h3 className="text-base font-semibold text-white mb-5 flex items-center gap-2">
-              <Zap className="w-5 h-5 text-warning-400" />
-              运输事件时间轴
-            </h3>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                <Zap className="w-5 h-5 text-warning-400" />
+                运输事件时间轴
+              </h3>
+              <button
+                onClick={handleOpenAddModal}
+                className="px-3 py-1.5 rounded-lg border border-ice-500/30 text-ice-400 hover:bg-ice-500/10 transition-colors flex items-center gap-1.5 text-sm"
+              >
+                <Plus className="w-4 h-4" />
+                添加事件
+              </button>
+            </div>
             <div className="relative">
               <div className="absolute left-[22px] top-0 bottom-0 w-px bg-gradient-to-b from-ice-500/30 via-purple-500/30 to-success-500/30"></div>
               <div className="space-y-4">
@@ -344,18 +431,38 @@ export default function ReviewDetail() {
                         <Icon className="w-5 h-5 text-warning-400" />
                       </div>
                       <div className="flex-1 pb-4">
-                        <div className="flex items-center gap-3 mb-1">
-                          <h4 className="text-sm font-medium text-white">{event.typeName}</h4>
-                          <span className="text-xs text-gray-500 font-num">
-                            {new Date(event.timestamp).toLocaleString("zh-CN", {
-                              month: "2-digit",
-                              day: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-1">
+                              <h4 className="text-sm font-medium text-white">{event.typeName}</h4>
+                              <span className="text-xs text-gray-500 font-num">
+                                {new Date(event.timestamp).toLocaleString("zh-CN", {
+                                  month: "2-digit",
+                                  day: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-400">{event.description}</p>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => handleOpenEditModal(event)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-ice-400 hover:bg-white/5 transition-colors"
+                              title="编辑"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEvent(event.id)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-danger-400 hover:bg-white/5 transition-colors"
+                              title="删除"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-400">{event.description}</p>
                       </div>
                     </div>
                   );
@@ -540,6 +647,77 @@ export default function ReviewDetail() {
           </div>
         </div>
       </div>
+
+      {showAddEventModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="glass-card p-6 w-[480px]">
+            <h3 className="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-warning-400" />
+              {editingEventId ? "编辑运输事件" : "新增运输事件"}
+            </h3>
+            <div className="space-y-5">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2.5">事件类型</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {eventTypeOptions.map((opt) => {
+                    const isSelected = eventForm.type === opt.type;
+                    return (
+                      <button
+                        key={opt.type}
+                        onClick={() =>
+                          setEventForm((prev) => ({ ...prev, type: opt.type, typeName: opt.typeName }))
+                        }
+                        className={cn(
+                          "flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all",
+                          isSelected
+                            ? "bg-ice-500/15 border-ice-500/40 text-white"
+                            : "bg-cold-800/50 border-transparent text-gray-400 hover:border-ice-500/20"
+                        )}
+                      >
+                        <opt.Icon className="w-5 h-5" />
+                        <span className="text-xs font-medium">{opt.typeName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">时间</label>
+                <input
+                  type="datetime-local"
+                  value={eventForm.timestamp}
+                  onChange={(e) => setEventForm((prev) => ({ ...prev, timestamp: e.target.value }))}
+                  className="input-field w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">事件描述</label>
+                <textarea
+                  value={eventForm.description}
+                  onChange={(e) => setEventForm((prev) => ({ ...prev, description: e.target.value }))}
+                  className="input-field w-full h-24 resize-none"
+                  placeholder="请输入事件描述..."
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowAddEventModal(false)}
+                className="px-4 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEvent}
+                className="btn-glow px-5 py-2 flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

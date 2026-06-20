@@ -1,5 +1,14 @@
+import { useState } from "react";
 import type { TemperatureZone, ProbePoint, DeployedProbe } from "@/types";
 import { MapPin, AlertCircle } from "lucide-react";
+
+interface AdjustmentMark {
+  id: string;
+  pointId: string;
+  x: number;
+  y: number;
+  description: string;
+}
 
 interface CarriageDiagramProps {
   zones: TemperatureZone[];
@@ -12,6 +21,10 @@ interface CarriageDiagramProps {
   selectedPointId?: string;
   width?: number;
   height?: number;
+  adjustmentMarks?: AdjustmentMark[];
+  markMode?: boolean;
+  onMarkPoint?: (point: ProbePoint) => void;
+  markedPointIds?: string[];
 }
 
 export default function CarriageDiagram({
@@ -25,7 +38,13 @@ export default function CarriageDiagram({
   selectedPointId,
   width = 600,
   height = 280,
+  adjustmentMarks = [],
+  markMode = false,
+  onMarkPoint,
+  markedPointIds = [],
 }: CarriageDiagramProps) {
+  const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
+
   const getProbeStatus = (pointId: string) => {
     const probe = deployedProbes.find((p) => p.pointId === pointId);
     if (!probe) return missingPoints.includes(pointId) ? "missing" : "unknown";
@@ -45,6 +64,11 @@ export default function CarriageDiagram({
       default:
         return "#00D4FF";
     }
+  };
+
+  const truncateDescription = (text: string, maxLength: number = 12): string => {
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength) + "...";
   };
 
   return (
@@ -69,6 +93,16 @@ export default function CarriageDiagram({
           <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
             <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(0, 212, 255, 0.05)" strokeWidth="1" />
           </pattern>
+          <marker
+            id="dangerArrowhead"
+            markerWidth="10"
+            markerHeight="7"
+            refX="9"
+            refY="3.5"
+            orient="auto"
+          >
+            <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+          </marker>
         </defs>
 
         <rect x="10" y="10" width={width - 20} height={height - 20} rx="8" fill="url(#carriageGradient)" stroke="rgba(0, 212, 255, 0.3)" strokeWidth="2" />
@@ -108,13 +142,32 @@ export default function CarriageDiagram({
           const isSelected = selectedPointId === point.id;
           const isMissing = status === "missing";
           const hasProbe = deployedProbes.some((p) => p.pointId === point.id);
+          const isMarked = markedPointIds.includes(point.id);
+          const isMarkInteractive = markMode && interactive;
+          const isHovered = hoveredPointId === point.id;
+          const shouldScale = isMarkInteractive && isHovered;
+
+          const handleClick = () => {
+            if (!interactive) return;
+            if (markMode) {
+              onMarkPoint?.(point);
+            } else {
+              onPointClick?.(point);
+            }
+          };
 
           return (
             <g
               key={point.id}
-              onClick={() => interactive && onPointClick?.(point)}
-              className={interactive ? "cursor-pointer" : ""}
-              style={{ transition: "transform 0.2s ease" }}
+              onClick={handleClick}
+              onMouseEnter={() => isMarkInteractive && setHoveredPointId(point.id)}
+              onMouseLeave={() => isMarkInteractive && setHoveredPointId(null)}
+              className={isMarkInteractive || interactive ? "cursor-pointer" : ""}
+              style={{
+                transition: "transform 0.2s ease",
+                transformOrigin: `${cx}px ${cy}px`,
+                transform: shouldScale ? "scale(1.1)" : "scale(1)",
+              }}
             >
               {isSelected && (
                 <circle
@@ -126,6 +179,17 @@ export default function CarriageDiagram({
                   strokeWidth="2"
                   opacity={0.5}
                   className="animate-pulse"
+                />
+              )}
+
+              {isMarked && (
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r="16"
+                  stroke="#ef4444"
+                  strokeDasharray="3 2"
+                  fill="rgba(239,68,68,0.08)"
                 />
               )}
 
@@ -178,6 +242,75 @@ export default function CarriageDiagram({
                   {point.type === "mandatory" && " *"}
                 </text>
               )}
+            </g>
+          );
+        })}
+
+        {adjustmentMarks.map((mark) => {
+          const startCx = 10 + (mark.x / 100) * (width - 20);
+          const startCy = 10 + (mark.y / 100) * (height - 20);
+          const isOnRightSide = mark.x > 70;
+          const arrowEndOffsetX = isOnRightSide ? -50 : 50;
+          const arrowEndOffsetY = -20;
+          const endCx = startCx + arrowEndOffsetX;
+          const endCy = startCy + arrowEndOffsetY;
+
+          const bubbleText = truncateDescription(mark.description);
+          const charWidth = 8;
+          const bubblePaddingX = 10;
+          const bubblePaddingY = 6;
+          const bubbleWidth = bubbleText.length * charWidth + bubblePaddingX * 2;
+          const bubbleHeight = 24;
+
+          let bubbleX = endCx;
+          let bubbleY = endCy - bubbleHeight / 2 - 10;
+
+          if (isOnRightSide) {
+            bubbleX = endCx - bubbleWidth;
+          }
+
+          if (bubbleX < 15) bubbleX = 15;
+          if (bubbleX + bubbleWidth > width - 15) bubbleX = width - 15 - bubbleWidth;
+          if (bubbleY < 15) bubbleY = 15;
+          if (bubbleY + bubbleHeight > height - 15) bubbleY = height - 15 - bubbleHeight;
+
+          const arrowEndX = isOnRightSide ? bubbleX + bubbleWidth : bubbleX;
+          const arrowEndY = bubbleY + bubbleHeight / 2;
+
+          return (
+            <g key={mark.id}>
+              <line
+                x1={startCx}
+                y1={startCy}
+                x2={arrowEndX}
+                y2={arrowEndY}
+                stroke="#ef4444"
+                strokeWidth="2"
+                strokeDasharray="4 3"
+                markerEnd="url(#dangerArrowhead)"
+              />
+
+              <rect
+                x={bubbleX}
+                y={bubbleY}
+                width={bubbleWidth}
+                height={bubbleHeight}
+                rx="6"
+                fill="rgba(239, 68, 68, 0.1)"
+                stroke="#ef4444"
+                strokeWidth="1.5"
+              />
+
+              <text
+                x={bubbleX + bubbleWidth / 2}
+                y={bubbleY + bubbleHeight / 2 + 4}
+                textAnchor="middle"
+                fill="#ef4444"
+                fontSize="11"
+                fontWeight="500"
+              >
+                {bubbleText}
+              </text>
             </g>
           );
         })}

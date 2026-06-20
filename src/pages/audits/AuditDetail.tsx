@@ -14,14 +14,24 @@ import {
   MapPin,
   ChevronLeft,
   ChevronRight,
-  ZoomIn,
   MessageSquare,
   XCircle,
+  Trash2,
+  AlertOctagon,
+  LogOut,
 } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import CarriageDiagram from "@/components/CarriageDiagram";
+import ProbePhoto from "@/components/ProbePhoto";
 import type { DeployedProbe, ProbePoint } from "@/types";
 import { cn } from "@/lib/utils";
+
+interface AdjustmentMarkDraft {
+  pointId: string;
+  x: number;
+  y: number;
+  description: string;
+}
 
 export default function AuditDetail() {
   const { id } = useParams<{ id: string }>();
@@ -36,7 +46,9 @@ export default function AuditDetail() {
   );
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  const [photoZoom, setPhotoZoom] = useState(false);
+  const [rejectMarkMode, setRejectMarkMode] = useState(false);
+  const [adjustmentMarksDraft, setAdjustmentMarksDraft] = useState<AdjustmentMarkDraft[]>([]);
+  const [markPointInput, setMarkPointInput] = useState<{ pointId: string; description: string } | null>(null);
 
   if (!auditTask || !template) {
     return (
@@ -48,6 +60,20 @@ export default function AuditDetail() {
 
   const selectedProbe = auditTask.deployedProbes.find((p) => p.id === selectedProbeId);
   const selectedPoint = template.points.find((p) => p.id === selectedProbe?.pointId);
+
+  const effectiveAdjustmentMarks =
+    auditTask.status === "rejected" && auditTask.auditRecord?.adjustmentMarks
+      ? auditTask.auditRecord.adjustmentMarks.map((m) => ({
+          pointId: m.pointId,
+          x: m.x,
+          y: m.y,
+          description: m.description,
+          id: m.id,
+        }))
+      : adjustmentMarksDraft.map((m, idx) => ({
+          ...m,
+          id: `draft-${idx}`,
+        }));
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
@@ -73,10 +99,72 @@ export default function AuditDetail() {
 
   const handleReject = () => {
     if (rejectReason.trim()) {
-      rejectAudit(auditTask.id, rejectReason);
+      rejectAudit(auditTask.id, rejectReason, adjustmentMarksDraft);
       setShowRejectModal(false);
+      setRejectMarkMode(false);
+      setAdjustmentMarksDraft([]);
       navigate("/audits");
     }
+  };
+
+  const handleRejectButtonClick = () => {
+    setRejectMarkMode(true);
+  };
+
+  const handleExitRejectMarkMode = () => {
+    setRejectMarkMode(false);
+    setAdjustmentMarksDraft([]);
+    setMarkPointInput(null);
+  };
+
+  const handleMarkPoint = (point: ProbePoint) => {
+    const existingIdx = adjustmentMarksDraft.findIndex((m) => m.pointId === point.id);
+    if (existingIdx !== -1) {
+      setMarkPointInput({
+        pointId: point.id,
+        description: adjustmentMarksDraft[existingIdx].description,
+      });
+    } else {
+      setMarkPointInput({ pointId: point.id, description: "" });
+    }
+  };
+
+  const handleConfirmMarkPoint = () => {
+    if (!markPointInput || !markPointInput.description.trim()) return;
+
+    const point = template.points.find((p) => p.id === markPointInput.pointId);
+    if (!point) return;
+
+    const existingIdx = adjustmentMarksDraft.findIndex((m) => m.pointId === markPointInput.pointId);
+    const newMark: AdjustmentMarkDraft = {
+      pointId: markPointInput.pointId,
+      x: point.x,
+      y: point.y,
+      description: markPointInput.description.trim(),
+    };
+
+    if (existingIdx !== -1) {
+      const updated = [...adjustmentMarksDraft];
+      updated[existingIdx] = newMark;
+      setAdjustmentMarksDraft(updated);
+    } else {
+      setAdjustmentMarksDraft([...adjustmentMarksDraft, newMark]);
+    }
+
+    setMarkPointInput(null);
+  };
+
+  const handleRemoveAdjustmentMark = (pointId: string) => {
+    setAdjustmentMarksDraft((prev) => prev.filter((m) => m.pointId !== pointId));
+  };
+
+  const getPointName = (pointId: string) => {
+    return template.points.find((p) => p.id === pointId)?.name || pointId;
+  };
+
+  const handleConfirmRejectWithMarks = () => {
+    setRejectMarkMode(false);
+    setShowRejectModal(true);
   };
 
   const isAudited = auditTask.status === "approved" || auditTask.status === "rejected";
@@ -104,10 +192,10 @@ export default function AuditDetail() {
           </div>
         </div>
 
-        {!isAudited && (
+        {!isAudited && !rejectMarkMode && (
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setShowRejectModal(true)}
+              onClick={handleRejectButtonClick}
               className="px-5 py-2.5 rounded-lg border border-danger-500/30 text-danger-400 hover:bg-danger-500/10 transition-colors flex items-center gap-2"
             >
               <X className="w-5 h-5" />
@@ -119,6 +207,24 @@ export default function AuditDetail() {
             >
               <Check className="w-5 h-5" />
               审核通过
+            </button>
+          </div>
+        )}
+
+        {!isAudited && rejectMarkMode && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleExitRejectMarkMode}
+              className="px-5 py-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleConfirmRejectWithMarks}
+              className="px-5 py-2.5 rounded-lg bg-danger-500 text-white hover:bg-danger-400 transition-colors flex items-center gap-2"
+            >
+              <XCircle className="w-5 h-5" />
+              确认退回
             </button>
           </div>
         )}
@@ -195,6 +301,32 @@ export default function AuditDetail() {
                     {auditTask.auditRecord.remarks}
                   </p>
                 </div>
+                {auditTask.auditRecord.adjustmentMarks && auditTask.auditRecord.adjustmentMarks.length > 0 && (
+                  <div className="pt-3">
+                    <p className="text-xs text-gray-500 mb-2 flex items-center gap-1.5">
+                      <AlertOctagon className="w-3 h-3 text-danger-400" />
+                      调整要求列表
+                    </p>
+                    <div className="space-y-2">
+                      {auditTask.auditRecord.adjustmentMarks.map((mark) => (
+                        <div
+                          key={mark.id}
+                          className="p-2.5 rounded-lg bg-danger-500/10 border border-danger-500/20"
+                        >
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <MapPin className="w-3 h-3 text-danger-400" />
+                            <span className="text-xs font-medium text-danger-300">
+                              {getPointName(mark.pointId)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-300 leading-relaxed">
+                            {mark.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -226,6 +358,21 @@ export default function AuditDetail() {
               <MapPin className="w-5 h-5 text-ice-400" />
               车厢布控平面图
             </h3>
+            {rejectMarkMode && (
+              <div className="mb-4 p-3 rounded-lg bg-danger-500/10 border border-danger-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-danger-300">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>退回标记模式：点击问题点位并填写调整要求，完成后确认退回</span>
+                </div>
+                <button
+                  onClick={handleExitRejectMarkMode}
+                  className="p-1.5 rounded-lg text-danger-400 hover:text-white hover:bg-white/10 transition-colors"
+                  title="退出标记模式"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             <div className="bg-cold-900/50 rounded-xl p-6">
               <CarriageDiagram
                 zones={template.zones}
@@ -241,6 +388,10 @@ export default function AuditDetail() {
                 selectedPointId={selectedProbe?.pointId}
                 width={500}
                 height={240}
+                markMode={rejectMarkMode}
+                markedPointIds={adjustmentMarksDraft.map((m) => m.pointId)}
+                adjustmentMarks={auditTask.auditRecord?.adjustmentMarks || effectiveAdjustmentMarks}
+                onMarkPoint={handleMarkPoint}
               />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-3 text-center">
@@ -272,23 +423,10 @@ export default function AuditDetail() {
             </h3>
             {selectedProbe ? (
               <div className="space-y-4">
-                <div
-                  className="relative bg-cold-900 rounded-xl overflow-hidden cursor-pointer group"
-                  onClick={() => setPhotoZoom(true)}
-                >
-                  <div className="aspect-video flex items-center justify-center bg-gradient-to-br from-cold-700 to-cold-800">
-                    <div className="text-center">
-                      <Camera className="w-16 h-16 text-gray-600 mx-auto mb-3" />
-                      <p className="text-sm text-gray-500">{selectedPoint?.name} 点位照片</p>
-                      <p className="text-xs text-gray-600 mt-1">探头编号: {selectedProbe.probeNo}</p>
-                    </div>
-                    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="bg-black/60 rounded-lg p-2">
-                        <ZoomIn className="w-5 h-5 text-white" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <ProbePhoto
+                  probeNo={selectedProbe.probeNo}
+                  pointName={selectedPoint?.name || ""}
+                />
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-400">{selectedPoint?.name}</span>
                   <div className="flex items-center gap-4">
@@ -414,12 +552,51 @@ export default function AuditDetail() {
 
       {showRejectModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="glass-card p-6 w-96">
+          <div className="glass-card p-6 w-[480px] max-h-[85vh] overflow-y-auto">
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
               <XCircle className="w-5 h-5 text-danger-400" />
               退回审核
             </h3>
             <p className="text-sm text-gray-400 mb-4">请填写退回原因，现场将根据反馈调整布控。</p>
+
+            {adjustmentMarksDraft.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                    <AlertOctagon className="w-3 h-3 text-danger-400" />
+                    调整标记（{adjustmentMarksDraft.length}）
+                  </p>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {adjustmentMarksDraft.map((mark, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-lg bg-danger-500/10 border border-danger-500/20 flex items-start justify-between gap-3"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <MapPin className="w-3 h-3 text-danger-400 flex-shrink-0" />
+                          <span className="text-xs font-medium text-danger-300">
+                            {getPointName(mark.pointId)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-300 leading-relaxed break-words">
+                          {mark.description}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveAdjustmentMark(mark.pointId)}
+                        className="p-1.5 rounded text-gray-500 hover:text-danger-400 hover:bg-danger-500/10 transition-colors flex-shrink-0"
+                        title="删除标记"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <textarea
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
@@ -444,17 +621,42 @@ export default function AuditDetail() {
         </div>
       )}
 
-      {photoZoom && selectedProbe && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 cursor-pointer"
-          onClick={() => setPhotoZoom(false)}
-        >
-          <div className="max-w-4xl max-h-[80vh] aspect-video bg-cold-800 rounded-xl flex items-center justify-center">
-            <div className="text-center">
-              <Camera className="w-24 h-24 text-gray-600 mx-auto mb-4" />
-              <p className="text-lg text-gray-400">{selectedPoint?.name} 点位照片</p>
-              <p className="text-sm text-gray-600 mt-2">探头编号: {selectedProbe.probeNo}</p>
-              <p className="text-xs text-gray-700 mt-4">点击任意位置关闭</p>
+      {markPointInput && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="glass-card p-5 w-96">
+            <h3 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-danger-400" />
+              调整说明 - {getPointName(markPointInput.pointId)}
+            </h3>
+            <p className="text-xs text-gray-400 mb-3">请填写该点位的调整要求，现场将按此整改。</p>
+            <textarea
+              value={markPointInput.description}
+              onChange={(e) =>
+                setMarkPointInput({ ...markPointInput, description: e.target.value })
+              }
+              className="input-field w-full h-28 resize-none mb-4"
+              placeholder="如：探头位置需向中间移动 30cm，需固定更牢固..."
+              autoFocus
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setMarkPointInput(null)}
+                className="px-4 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors text-sm"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmMarkPoint}
+                disabled={!markPointInput.description.trim()}
+                className={cn(
+                  "px-4 py-2 rounded-lg transition-colors text-sm",
+                  markPointInput.description.trim()
+                    ? "bg-danger-500 text-white hover:bg-danger-400"
+                    : "bg-gray-700 text-gray-500 cursor-not-allowed"
+                )}
+              >
+                确认
+              </button>
             </div>
           </div>
         </div>
